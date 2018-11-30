@@ -1,0 +1,74 @@
+/*
+*********************************************************************************************************
+*
+*
+*********************************************************************************************************
+*/
+#ifndef _BSP_H_
+#define _BSP_H
+
+#define  uCOS_EN      1
+
+#if uCOS_EN == 1    
+	#include "os.h"   
+
+	#define  ENABLE_INT()      CPU_CRITICAL_EXIT()     /* 使能全局中断 */
+	#define  DISABLE_INT()     CPU_CRITICAL_ENTER()    /* 禁止全局中断 */
+#else
+	/* 开关全局中断的宏 */
+	#define ENABLE_INT()	__set_PRIMASK(0)	/* 使能全局中断 */
+	#define DISABLE_INT()	__set_PRIMASK(1)	/* 禁止全局中断 */
+#endif
+
+#define Error_Handler() _Error_Handler(__FILE__, __LINE__)
+
+
+#include "stm32f4xx_hal.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#ifndef TRUE
+	#define TRUE  1
+#endif
+
+#ifndef FALSE
+	#define FALSE 0
+#endif
+
+
+/* 通过取消注释或者添加注释的方式控制是否包含底层驱动模块 */
+
+#include "stm32f429i_discovery.h"
+#include "stm32f429i_discovery_sdram.h"
+#include "stm32f429i_discovery_lcd.h"
+#include "System.h"
+#include "HFLPT230.h"
+#include "bsp_uart_fifo.h"
+#include "sensor_measure.h"
+#include "bsp_tim_pwm.h"
+#include "ringbuffer.h"
+#include "tty.h"
+#include "sha.h"
+#include "GUI.h"
+#include "bsp_spi_bus.h"
+#include "bsp_spi_flash.h"
+#include "I2C_simulation.h"
+#include "HT1080.h"
+#include "bsp_adc.h"
+#include "touch_key.h"
+#include "usb_device.h"
+#include "usbd_cdc_if.h"
+
+/* 提供给其他C文件调用的函数 */
+
+void _Error_Handler(char *, int);
+void bsp_DelayMS(uint32_t _ulDelayTime);
+void bsp_DelayUS(uint32_t _ulDelayTime);
+void bsp_Init(void);
+void bsp_Idle(void);
+void BSP_Tick_Init (void);
+
+#endif
+
+/***************************** cubic (END OF FILE) *********************************/
