@@ -78,27 +78,4 @@
 #include "WM.h"
 #include "bsp.h"
 
-typedef enum {
-	ble_wifi_connect_request 	= 1,
-	ble_wifi_connect_success 	= 2,
-	ble_wifi_connect_error_401 	= 3,
-	ble_wifi_connect_error_500 	= 4,
-	ble_wifi_connect_error_598 	= 5,
-	ble_wifi_connect_error_599 	= 6,
-	ble_idle = 0,
-}ble_request_t;
-
-typedef struct _WORK_MODE_SWITCH {
-	uint8_t s_key_sci_button;
-	uint8_t d_key_sci_button;
-	uint8_t l_key_sci_button;
-	uint8_t s_rst_button;
-	uint8_t l_rst_button;
-	uint8_t s_rst_button_state;
-	uint8_t l_rst_button_state; 
-}WORK_MODE_SWITCH_T;
-
-#define	DEV_CALIBRATION_EN	    1 
-#define UCOSIII_TASK_DEBUG      1
-
 #endif

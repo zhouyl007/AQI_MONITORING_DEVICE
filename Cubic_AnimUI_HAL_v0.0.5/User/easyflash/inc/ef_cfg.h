@@ -35,8 +35,9 @@
 
 /* using wear leveling mode for ENV */
  #define EF_ENV_USING_WL_MODE
+ 
 /* using power fail safeguard mode for ENV */
-/* #define EF_ENV_USING_PFS_MODE */
+// #define EF_ENV_USING_PFS_MODE
 
 /* using IAP function */
 /* #define EF_USING_IAP */
@@ -97,7 +98,7 @@
         #define ENV_AREA_SIZE          (2 * EF_ERASE_MIN_SIZE)      /* 8K */
     #else
         /* ENV area total bytes size in wear leveling and power fail safeguard mode. */
-        #define ENV_AREA_SIZE          (6 * EF_ERASE_MIN_SIZE)      /* 24K */
+        #define ENV_AREA_SIZE          (40 * EF_ERASE_MIN_SIZE)      /* 24K */
     #endif
 #endif
 /* saved log area size */

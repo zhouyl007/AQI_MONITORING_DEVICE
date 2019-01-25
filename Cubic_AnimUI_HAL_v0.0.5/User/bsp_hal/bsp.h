@@ -38,12 +38,26 @@
 
 #define	    RS485_EN	            0
 #define	    USBHS_EN	            1
-#define	    DEV_CALIBRATION_EN	    1 /* 产测允许 */
-#define 	UCOSIII_TASK_DEBUG      1 /* UCOS debug */
-#define 	RUN_MODE_DEBUG          0 /* mode debug */
-#define  	AZURE_STAGING			  /*注释则选择实际Azure环境*/
+#define	    DEV_CALIBRATION_EN	    1 	/* 产测允许 */
+#define 	UCOSIII_TASK_DEBUG      1 	/* UCOS debug */
+#define 	RUN_MODE_DEBUG          0 	/* mode debug */
+//#define  	AZURE_STAGING			  	/*注释则选择实际Azure环境(LIVE)*/
+//#define   CHINA			            /*注释选择国际时间(GMT)*/			
 
-#define     sw_version              ("Ver 0.2.1")
+#ifdef AZURE_STAGING
+#define HTTP_RESPONSE_HEADER 		335
+#define HTTP_RESPONSE_BODY   		342
+#define SAS_RAW_OFFSET				51
+#else
+#define HTTP_RESPONSE_HEADER 		328
+#define HTTP_RESPONSE_BODY   		335
+#define SAS_RAW_OFFSET				44
+#endif
+
+#define		VER_NUM_0 				(0x30)
+#define		VER_NUM_1 				(0x33)
+#define		VER_NUM_2 				(0x32)
+#define     sw_version              ("Ver 0.3.2")
 #define     HARDWARE_VERSION        ("V1.0.0")
 #define     SOFTWARE_VERSION        ("V0.1.0")
 #define     ssid                    ("ssid")
@@ -53,12 +67,16 @@
 #define     passwd                  ("123456789")
 #define     AccountId               ("Ozs4OiRSLmlZS3h5aGxNXzYvMTkvMjAxOCAyOjA2OjE3IFBN")
 #define     prim_key                ("primaryKey")
+#define     secondaryKey            ("secondaryKey")
 #define     factory                 ("nice day")
 #define     luminosity              ("luminosity")
 #define     modeSelect              ("Selected")
 #define     modeFavor               ("Favorite")
 #define     bleSetting              ("bluetooth")
 #define     lguSetting              ("lguSetting")
+#define		VOC_ZERO	            ("voc_zero")
+#define		VOC_ZERO_BK	            ("voc_zero_bk")
+
 
 /* 通过取消注释或者添加注释的方式控制是否包含底层驱动模块 */
 

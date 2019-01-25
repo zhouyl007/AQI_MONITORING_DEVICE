@@ -300,7 +300,8 @@ BUFFER_HANDLE_ Base64_Decoder(const char* source)
         if ((strlen(source) % 4) != 0)
         {
             /*Codes_SRS_BASE64_06_011: [If the source string has an invalid length for a base 64 encoded string then Base64_Decode shall return NULL.]*/
-            LogError("Invalid length Base64 string!");
+            LogError("Invalid length Base64 string!\r\n");
+			LogError("%s\r\n",source);
             result = NULL;
         }
         else

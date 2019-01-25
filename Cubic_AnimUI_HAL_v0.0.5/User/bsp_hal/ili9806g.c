@@ -37,6 +37,8 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "ili9806g.h"
+#include "includes.h"
+
 
 /** @addtogroup BSP
   * @{
@@ -111,6 +113,7 @@ LCD_DrvTypeDef   ili9806g_drv =
   * @{
   */   
 
+extern void brightnessSetting(void);
 
 /**
   * @brief  Enables the Display.
@@ -119,9 +122,9 @@ LCD_DrvTypeDef   ili9806g_drv =
   */
 void ili9806g_DisplayOn(void)
 {
-  //LCD_BKL_HIGH(); // 开启背光
   /* Display On */
   LCD_IO_WriteReg(0x29);
+  brightnessSetting(); // 开启背光
 }
 
 /**
@@ -133,7 +136,7 @@ void ili9806g_DisplayOff(void)
 {
   /* Display Off */
   LCD_IO_WriteReg(0x28);
-  //LCD_BKL_LOW(); // 关闭背光
+  TIM_SetTIM2Compare4(0);// 关闭背光
 }
 
 /**

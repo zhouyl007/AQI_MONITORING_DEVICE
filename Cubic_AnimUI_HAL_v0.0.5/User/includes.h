@@ -66,19 +66,18 @@
 #include  "bsp.h"
 
 typedef enum {
-
 	ble_wifi_connect_request 	= 1,
 	ble_wifi_connect_success 	= 2,
 	ble_wifi_connect_error_401 	= 3,
 	ble_wifi_connect_error_500 	= 4,
 	ble_wifi_connect_error_598 	= 5,
 	ble_wifi_connect_error_599 	= 6,
+	ble_wifi_connect_abnormal   = 7,
+	ble_connect_abnormal_exit   = 8,
 	ble_idle = 0,
-	
 }ble_request_t;
 
 typedef struct _WORK_MODE_SWITCH {
-    
 	uint8_t s_key_sci_button;
 	uint8_t d_key_sci_button;
 	uint8_t l_key_sci_button;
@@ -87,8 +86,20 @@ typedef struct _WORK_MODE_SWITCH {
     uint8_t l_sci_button_state;
 	uint8_t s_rst_button_state;
 	uint8_t l_rst_button_state;
-    
+	uint8_t s_rst_button_ctl;
 }WORK_MODE_SWITCH_T;
+
+typedef enum {
+	  WIFI_CheckLink = 0,
+	  WIFI_GetState,
+	  WIFI_SetPara,
+	  WIFI_PostLogin,
+	  WIFI_PostBody,
+	  WIFI_HardReset,
+	  WIFI_GetData,
+	  WIFI_Idle_,
+} WIFI_RUN_MODE;
+
 
 #endif
 

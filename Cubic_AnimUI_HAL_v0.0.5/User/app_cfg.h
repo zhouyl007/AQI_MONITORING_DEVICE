@@ -41,7 +41,6 @@
 */
 
 #if 1
-
 #define  APP_CFG_TASK_START_PRIO                              2u                        
 #define  APP_CFG_TASK_USER_IF_PRIO                            3u/*6u*/ 				    /* WIFI Control  */
 #define  APP_CFG_TASK_COM_PRIO                                7u 						/* SENSOR */
@@ -50,9 +49,7 @@
 #define  APP_CFG_TASK_BLE_PRIO                                5u/*7u*/						/* BLE */
 #define  APP_CFG_TASK_STAT_PRIO                               11u
 #define  APP_CFG_TASK_ASYNC_PRIO                              12u
-
 #else
-
 #define  APP_CFG_TASK_START_PRIO                              2u                        
 #define  APP_CFG_TASK_USER_IF_PRIO                            3u/*6u*/ 				    /* WIFI Control  */
 #define  APP_CFG_TASK_COM_PRIO                                8u 						/* SENSOR */
@@ -61,7 +58,6 @@
 #define  APP_CFG_TASK_BLE_PRIO                                5u/*7u*/						/* BLE */
 #define  APP_CFG_TASK_STAT_PRIO                               11u
 #define  APP_CFG_TASK_ASYNC_PRIO                              12u
-
 #endif
 
 /*

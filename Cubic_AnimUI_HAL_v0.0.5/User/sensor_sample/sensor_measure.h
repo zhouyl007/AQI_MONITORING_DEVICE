@@ -10,14 +10,17 @@
 #define	PM2005_DEBUG	    0
 #define RS485_DEBUG   	    0
 
-#define first_raw     ("first raw value")
-#define first_cali    ("first cali value")
-#define second_raw    ("second raw value")
-#define second_cali   ("second cali value")
-#define first_coef    ("first coef")
-#define second_coef   ("second coef")
-#define temp_diff     ("temperature diff")
-#define serial_num    ("serial number")
+#define first_raw     			("first raw value")
+#define first_cali    			("first cali value")
+#define second_raw    			("second raw value")
+#define second_cali   			("second cali value")
+#define first_coef    			("first coef")
+#define first_coef_bk    		("first_coef_bk coef")
+#define second_coef   			("second coef")
+#define second_coef_bk   		("second_coef_bk coef")
+#define temp_diff     			("temperature diff")
+#define temp_diff_bk     		("temp_diff_bk diff")
+//#define serial_num    			("serial number")
 
 #define RS485_SendBuf       (usb_Transmit)
 

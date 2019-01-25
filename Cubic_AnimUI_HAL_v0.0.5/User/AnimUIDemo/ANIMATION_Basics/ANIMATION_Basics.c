@@ -41,7 +41,7 @@ extern WIFI_CTR           WiFi_State;
 extern WORK_MODE_SWITCH_T mode_switch;
 extern Bluetooth_Login    Bluetooth_State;
 WORK_MODE_T               run_mode;
-azure_cloud               cloud = {0x7F,0x7F,0x7FFF,0x7FFF,0x7FFF,0x7FFF,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+azure_cloud               cloud = {0x7F,0x7F,0x7FFF,0x7FFF,0x7FFF,0x7FFF,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
 static GUI_MEMDEV_Handle hMemBMP_;
 static GUI_MEMDEV_Handle hMemText;
@@ -49,7 +49,7 @@ static WM_HWIN hText;
 
 #define GUI_DARKORANGE   			0x000042CC
 #define MIN_TIME_PER_FRAME_ENLARGE 	30
-#define AUTO_RUN_TIM_0 				(30 * 60U)		 // 30分钟
+#define AUTO_RUN_TIM_0 				(5 * 60U)		 // 30分钟
 #define AUTO_RUN_TIM_1 				(1  * 60 * 60U)  // 1小时
 #define AUTO_RUN_TIM_2 				(2  * 60 * 60U)  // 2小时
 
@@ -90,6 +90,17 @@ typedef enum {
   OFF   = 1,
 }Run_Mode_Cntl;
 
+typedef enum {
+   ALARM_FIRST,
+   ALARM_AGAIN,
+   ALARM_STATUS,
+   ALARM_IDLE,
+}alertMode;
+
+#define ALERT_MODE_VALUE (60u)
+#define ALERT_DISPLAY    (500u)
+
+
 extern  GUI_BITMAP bmhouse_smile;  
 extern  GUI_BITMAP bmlightsmile; 
 extern  GUI_BITMAP bmlightpout; 
@@ -115,12 +126,12 @@ tDrawItContext DrawItContext;
 static int _step;
 static unsigned char WiFiSignalCount = 0;
 static unsigned char BlowSignalCount = 0;
+static unsigned char BLESignalCount	 = 0;
+
 
 GUI_RECT Rect_Squint 		= {340,  120,  465,  195};
 GUI_RECT Rect_pBm 			= {100, -100,  700,  260};
 GUI_RECT Rect_BLEpBm 		= {380,    0,  540,  480};
-GUI_RECT Rect_BlowpBm_0 	= {500,  265,  600,  340};
-GUI_RECT Rect_BlowpBm_1 	= {450,  285,  500,  320};
 GUI_RECT Rect_Blow 			= {190,  190,  630,  340};
 
 extern void  SENSORTaskPost ( void );
@@ -128,6 +139,8 @@ extern void  SENSORTaskPend ( void);
 static LANGUAGE_INDEX lguPkgSwitch(uint8_t lug);
 void Six_Language_Display_Function(LANGUAGE_INDEX Language,char catg,int xpos,int ypos);
 static void _devRunModeCtl(Run_Mode_Cntl iaq, Run_Mode_Cntl iaq_exp, Run_Mode_Cntl eaq, Run_Mode_Cntl eaq_exp);
+static int holidayModeSetting(void);
+static int holidayModeQuit(void);
 
 typedef enum { 
 	Button_Press	= 1,
@@ -260,7 +273,6 @@ static int GUI_Anim_Delay_Long(int Delay) {
   return 0;
 }
 
-
 /*static*/ void GUI_Anim_ClearUp(void) {
   	GUI_MEMDEV_Select(0);
 	GUI_MEMDEV_Clear(hMemBMP_);
@@ -370,9 +382,7 @@ void DEMO_WiFiSigStarup(unsigned char loop)
   * @retval None
   */
 static void _cbBLEBk(WM_MESSAGE * pMsg) {
-
   int Step = 25;
-  static unsigned char BLESignalCount = 0;
 
   switch (pMsg->MsgId) 
   {
@@ -409,9 +419,16 @@ static void _cbBLEBk(WM_MESSAGE * pMsg) {
   */
 void DEMO_Ble_Starup(unsigned char loop)
 {
+  BLESignalCount = 0;
   WM_SetCallback(WM_GetDesktopWindowEx(0), _cbBLEBk);
   
-  while (!Bluetooth_State.ble_recv_done) {
+  while (TRUE) {
+  	
+  	if(Bluetooth_State.ble_recv_done)
+		break;
+	else if(Bluetooth_State.ble_recv_error)
+		break;
+		
     WM_InvalidateArea(&Rect_BLEpBm);
     
     //GUI_Delay(300);
@@ -425,13 +442,14 @@ void DEMO_Ble_Starup(unsigned char loop)
 //
 //
 #define xPOS_OFFSET  (18)
-#define yPOS_OFFSET  (-5)
+#define yPOS_OFFSET  (-35)
 
 static void _cbBlowBk(WM_MESSAGE * pMsg) {
-  
-  unsigned char r_eye = 13;
-  unsigned char r_mou_x = 15;
-  unsigned char r_mou_y = 17;
+  unsigned char r_eye     = 13;
+  unsigned char r_mou_x   = 15;
+  unsigned char r_mou_y   = 17;
+  GUI_RECT Rect_BlowpBm_0 = {500,  265 + yPOS_OFFSET + 5,  600,  340 + yPOS_OFFSET + 7};
+  GUI_RECT Rect_BlowpBm_1 = {450,  285 + yPOS_OFFSET + 5,  500,  320 + yPOS_OFFSET + 7};
 
   switch (pMsg->MsgId) 
   {
@@ -442,40 +460,37 @@ static void _cbBlowBk(WM_MESSAGE * pMsg) {
 			GUI_ClearRectEx(&Rect_BlowpBm_1);
 			BlowSignalCount = 0;
 		}
-	    GUI_DrawBitmap(&bmmaihouse, (LCD_GetXSize() - bmmaihouse.XSize) / 2 , (LCD_GetYSize() - bmmaihouse.YSize) / 2);
+	    GUI_DrawBitmap(&bmmaihouse, (LCD_GetXSize() - bmmaihouse.XSize) / 2 , (LCD_GetYSize() - bmmaihouse.YSize) / 2 + yPOS_OFFSET + 5);
 		if(BlowSignalCount == 0){
-			//GUI_ClearRect(400 - 35 - r_eye * 2, 240 - r_eye * 2, 400 + 55 + r_eye * 2, 240 + 35 + r_eye * 2 + r_mou_y * 2);
-		    GUI_ClearRect(400 - 35 - r_eye * 2, 240 - r_eye * 2, 400 + 65 + r_eye * 2, 240 + 35 + r_eye * 2 + r_mou_y * 2);//????????
+		    GUI_ClearRect(400 - 35 - r_eye * 2,240 - r_eye * 2 + yPOS_OFFSET, 400 + 65 + r_eye * 2, 240 + 35 + r_eye * 2 + r_mou_y * 2 + yPOS_OFFSET);
 			GUI_AA_FillCircle(LCD_GetXSize() / 2 - 35 + xPOS_OFFSET, LCD_GetYSize() / 2 + yPOS_OFFSET, r_eye);
 			GUI_AA_FillCircle(LCD_GetXSize() / 2 + 35 + xPOS_OFFSET, LCD_GetYSize() / 2 + yPOS_OFFSET, r_eye);
 			GUI_AA_FillEllipse(LCD_GetXSize() / 2 + 20 + xPOS_OFFSET, LCD_GetYSize() / 2 + 70 + yPOS_OFFSET, r_mou_x, r_mou_y);
 			BlowSignalCount++;
 		}
 		else if(BlowSignalCount == 1){
-			GUI_ClearRect(400 + 10 -  r_mou_x - 4,240 + 70 - r_mou_y - 4,400 + 40 + r_mou_x + 4,240 + 70 + r_mou_y + 4);
+			GUI_ClearRect(400 + 10 -  r_mou_x - 4,240 + 70 - r_mou_y - 4 + yPOS_OFFSET,400 + 40 + r_mou_x + 4,240 + 70 + r_mou_y + 4 + yPOS_OFFSET);
 			GUI_AA_FillEllipse(LCD_GetXSize() / 2 + 20 + xPOS_OFFSET,LCD_GetYSize() / 2 + 70 + yPOS_OFFSET,r_mou_x + 4,r_mou_y + 4);
 			BlowSignalCount++;
 		}
 		else if(BlowSignalCount == 2){
-			GUI_ClearRect(400 - 18 - r_eye * 2, 240 - r_eye * 2, 400 + 45 + r_eye * 2, 240 + r_eye * 2);
-			GUI_DrawBitmap(&bmlittle_eye, (LCD_GetXSize() - bmlittle_eye.XSize) / 2 + xPOS_OFFSET-1, (LCD_GetYSize() - bmlittle_eye.YSize) / 2 + yPOS_OFFSET+1);//-1 ????????
-			GUI_ClearRect(400 + 10 - r_mou_x - 4, 240 + 70 - r_mou_y - 44, 400 + 40 + r_mou_x + 34, 240 + 70 + r_mou_y + 4);
+			GUI_ClearRect(400 - 18 - r_eye * 2,240 - r_eye * 2 + yPOS_OFFSET, 400 + 45 + r_eye * 2,240 + r_eye * 2 + yPOS_OFFSET);
+			GUI_DrawBitmap(&bmlittle_eye, (LCD_GetXSize() - bmlittle_eye.XSize) / 2 + xPOS_OFFSET-1, (LCD_GetYSize() - bmlittle_eye.YSize) / 2 + yPOS_OFFSET+1);
+			GUI_ClearRect(400 + 10 - r_mou_x - 4,240 + 70 - r_mou_y - 44 + yPOS_OFFSET,400 + 40 + r_mou_x + 34,240 + 70 + r_mou_y + 4 + yPOS_OFFSET);
 			GUI_AA_FillEllipse(LCD_GetXSize() / 2 + 20 + xPOS_OFFSET, LCD_GetYSize() / 2 + 70 + yPOS_OFFSET, r_mou_x, r_mou_y);
 			BlowSignalCount++;
 		}
 		else if (BlowSignalCount == 3){
-			GUI_ClearRect(400 - 18 - r_eye * 2, 240 - r_eye * 2, 400 + 45 + r_eye * 2, 240 + r_eye * 2);
+			GUI_ClearRect(400 - 18 - r_eye * 2,240 - r_eye * 2 + yPOS_OFFSET,400 + 45 + r_eye * 2,240 + r_eye * 2 + yPOS_OFFSET);
 			GUI_DrawBitmap(&bmlittle_eye_0, (LCD_GetXSize() - bmlittle_eye_0.XSize) / 2 + xPOS_OFFSET, (LCD_GetYSize() - bmlittle_eye_0.YSize) / 2 - 6 + yPOS_OFFSET);
 
-			GUI_ClearRect(400 + 20 - r_mou_x - 4, 240 + 70 - r_mou_y - 14, 400 + 40 + r_mou_x + 4, 240 + 70 + r_mou_y + 4);
+			GUI_ClearRect(400 + 20 - r_mou_x - 4,240 + 70 - r_mou_y - 14 + yPOS_OFFSET,400 + 40 + r_mou_x + 4,240 + 70 + r_mou_y + 4 + yPOS_OFFSET);
 			GUI_AA_FillEllipse(LCD_GetXSize() / 2 + 20 + xPOS_OFFSET, LCD_GetYSize() / 2 + 70 + yPOS_OFFSET, r_mou_x - 4, r_mou_y - 4);
 			GUI_ClearRect((LCD_GetXSize() + bmmaihouse.XSize) / 2 - 50, LCD_GetYSize() / 2 + 45 + yPOS_OFFSET, (LCD_GetXSize() + bmmaihouse.XSize) / 2 + 100, LCD_GetYSize() / 2 + 96 + yPOS_OFFSET);
 			GUI_DrawBitmap(&bmblow, (LCD_GetXSize() - bmblow.XSize) / 2 + 85, (LCD_GetYSize() - bmblow.YSize) / 2 + 70 + yPOS_OFFSET);
 			BlowSignalCount++;
 		}
 		else if (BlowSignalCount == 4){
-			//GUI_ClearRect((LCD_GetXSize() + bmmaihouse.XSize) / 2 - 50, LCD_GetYSize() / 2 + 45 + yPOS_OFFSET, (LCD_GetXSize() + bmmaihouse.XSize) / 2 + 100, LCD_GetYSize() / 2 + 90 + yPOS_OFFSET);
-			
 			GUI_ClearRect((LCD_GetXSize() + bmmaihouse.XSize) / 2 - 62, LCD_GetYSize() / 2 + 40 + yPOS_OFFSET, (LCD_GetXSize() + bmmaihouse.XSize) / 2 + 100, LCD_GetYSize() / 2 + 96 + yPOS_OFFSET);
 			GUI_DrawBitmap(&bmblow_0, (LCD_GetXSize() - bmblow_0.XSize) / 2 + 95, (LCD_GetYSize() - bmblow_0.YSize) / 2 + 70 + yPOS_OFFSET);
 			BlowSignalCount++;
@@ -506,17 +521,21 @@ static void _cbBlowBk(WM_MESSAGE * pMsg) {
 void DEMO_Blow_Starup(int loop)
 {
   WM_SetCallback(WM_GetDesktopWindowEx(0), _cbBlowBk);
-  
-  while (loop-- && cloud.iaq >= 76 && cloud.mode_sys) // 10min && IAQ > 76 && Alert mode is true
+  BlowSignalCount = 8;
+  mode_switch.s_rst_button_ctl = FALSE;
+  printf("go into alert demo %d %d %d\r\n",loop,cloud.iaq,cloud.mode_sys);
+  while ((loop--) > NULL && cloud.iaq >= ALERT_MODE_VALUE && cloud.mode_sys == 1) // 10min && IAQ > 76 && Alert mode is true
   {
-    WM_InvalidateArea(&Rect_Blow);
-    
+	WM_InvalidateArea(&Rect_Blow);
+
 	if(GUI_Anim_Delay(200)) {
 		GUI_Anim_ClearUp();
+		mode_switch.s_rst_button_ctl = TRUE;
 		BlowSignalCount = 0;
 		break;
 	}
   }
+  printf("quit alert demo\r\n");
 }
 
 static void RstValidCallback(WM_MESSAGE * pMsg) 
@@ -549,11 +568,13 @@ void DEMO_RST_Validation(unsigned char loop)
         ef_set_and_save_env(ssid,account);
         ef_set_and_save_env(pass,passwd);
         ef_set_and_save_env(prim_key,factory);
-        ef_set_and_save_env(bleSetting,"null"); // 蓝牙-云端设置状态清除
-        ef_set_and_save_env(modeSelect,"null"); // 清除运行模式选择
-        ef_set_and_save_env(modeFavor ,"null");  // 清除常用模式选择
+		ef_set_and_save_env(secondaryKey,factory);
+        ef_set_and_save_env(bleSetting, "null"); // 蓝牙-云端设置状态清除
+        ef_set_and_save_env(modeSelect, "null"); // 清除运行模式选择
+        ef_set_and_save_env(modeFavor , "null");  // 清除常用模式选择
+        ef_set_and_save_env(lguSetting ,"null");  // 清除语言选择，默认英语
             
-        GUI_Delay(50);
+        GUI_Delay(10);
         HAL_NVIC_SystemReset();// 请求单片机重启
 	}
 	
@@ -1162,7 +1183,7 @@ static void GUI_Set_Color_Value(int sample_val,int xPos, int yPos, int SENSOR,in
         //if(run_mode.demo_mode_en && !WiFi_State.Network_OK)
         //    GUI_DispString("NA");
         //else
-            GUI_DispString("n/a");
+        GUI_DispString("n/a");
     }
 					
 	GUI_Set_Ring_Sensor_Pos(SENSOR,xPos,yPos);
@@ -1277,87 +1298,174 @@ static int GUI_Set_Ring_Indicator(unsigned int SensorVal, unsigned int sample_va
 				break;
 			case PM2005_TY: 
 				if((ArcStart >= /*222*/198) && (ArcStart <= 225)){ // 0 - 15
-				
-					if(sample_val == 0)
-						sample_val = 1;
-						
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_WHITE);
+
+					if(sample_val > 15)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
 				}
-				else if((ArcStart < /*222*/198) && (ArcStart >= /*218*/171)) // 16 - 30
+				else if((ArcStart < /*222*/198) && (ArcStart >= /*218*/171)){ // 16 - 30
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
-				else if((ArcStart < /*218*/171) && (ArcStart >= /*213*/135)) // 31 - 50
+
+					if(sample_val > 30)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+				}
+				else if((ArcStart < /*218*/171) && (ArcStart >= /*213*/135)){ // 31 - 50
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+
+					if(sample_val > 50)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
+				}
 				else if((ArcStart < /*205*/135) && (ArcStart >= 0)) // > 50
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
 				break;
 			case VOC_TY: 
 				if((ArcStart >= /*(203 + 4)*/158) && (ArcStart <= 225)){ // 0 - 50
-					if(sample_val == 0)
-						sample_val = 1;
-					
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart - 2,GUI_WHITE);
+
+					if(sample_val > 50)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
 				}
-				else if((ArcStart < /*(203 + 4)*/158) && (ArcStart >= /*(180 + 4)*/90))    //  51 - 100
+				else if((ArcStart < /*(203 + 4)*/158) && (ArcStart >= /*(180 + 4)*/90)){    //  51 - 100
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
-				else if((ArcStart < /*(180 + 4)*/90) && (ArcStart >= /*(90 + 4))*/23))	  // 101 - 150
+
+					if(sample_val > 100)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+				}
+				else if((ArcStart < /*(180 + 4)*/90) && (ArcStart >= /*(90 + 4))*/23)){	  // 101 - 150
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+
+					if(sample_val > 150)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
+				}
 				else if((ArcStart < /*(90 + 4)*/23) && (ArcStart >= 0))		// > 150  
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
 				break;
 			case H20_TY:
-				if((ArcStart >= 155) && (ArcStart <= 225))		// 0 - 25
+				if((ArcStart > 155) && (ArcStart <= 225)){		// 0 - 24
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
-				else if((ArcStart < 155) && (ArcStart > 145)) // 26 - 29
+					
+					if(sample_val >= 25)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+				}
+				else if((ArcStart <= 155) && (ArcStart > 145)){ // 25 - 29
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
-				else if((ArcStart <= 145) && (ArcStart > 117)) // 30 - 39
+
+					if(sample_val >= 30)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
+				}
+				else if((ArcStart <= 145) && (ArcStart > 117)){ // 30 - 39
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
-				else if((ArcStart <= 117) && (ArcStart >= 63)) // 40 - 60
+
+					if(sample_val >= 40)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_WHITE);
+				}
+				else if((ArcStart <= 117) && (ArcStart >= 63)){ // 40 - 60
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_WHITE);
-				else if((ArcStart < 63) && (ArcStart >= 36)) // 61 - 70
+
+					if(sample_val >= 61)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
+				}
+				else if((ArcStart < 63) && (ArcStart >= 36)){ // 61 - 70
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
-				else if((ArcStart < 36) && (ArcStart >= 23)) // 71 - 75
+
+					if(sample_val >= 71)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+				}
+				else if((ArcStart < 36) && (ArcStart >= 23)){ // 71 - 75
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+
+					if(sample_val >= 75)
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
+				}
 				else if((ArcStart < 23) && (ArcStart >= 0)) // 75+
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
 				break;
 			case PM25_Cloud:
-				if((ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL1)) && (ArcStart <= 225)) 
+				if((ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL1)) && (ArcStart <= 225)){ 
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_WHITE);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL1)) && (ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL2)))
+
+					if(sample_val > cloud.pm25EaqL1) // 16
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL1)) && (ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL2))){
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL2)) && (ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL3)))
+
+					if(sample_val > cloud.pm25EaqL2) // 31
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL2)) && (ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL3))){
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL3)) && (ArcStart >= 0))
+
+					if(sample_val > cloud.pm25EaqL3) // 51
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.pm25EaqL3)) && (ArcStart >= 0))
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
 				break;
 			case PM10_Cloud: 
-				if((ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL1)) && (ArcStart <= 225)) 
+				if((ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL1)) && (ArcStart <= 225)){ 
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_WHITE);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL1)) && (ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL2))) 
+
+					if(sample_val > cloud.pm10EaqL1) // 49
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL1)) && (ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL2))){
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL2)) && (ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL3)))
+
+					if(sample_val > cloud.pm10EaqL2) // 99
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL2)) && (ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL3))){
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL3)) && (ArcStart >= 0))
+
+					if(sample_val > cloud.pm10EaqL3) // 195
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.pm10EaqL3)) && (ArcStart >= 0))
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
 				break;
 			case NO2_Cloud: 
-				if((ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL1)) && (ArcStart <= 225))      
+				if((ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL1)) && (ArcStart <= 225)){      
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_WHITE);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL1)) && (ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL2)))  
+
+					if(sample_val > cloud.no2EaqL1) // 35
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL1)) && (ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL2))){ 
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL2)) && (ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL3)))  
+					
+					if(sample_val > cloud.no2EaqL2) // 79
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL2)) && (ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL3))){  
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL3)) && (ArcStart >= 0))     
+					
+					if(sample_val > cloud.no2EaqL3) // 219
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.no2EaqL3)) && (ArcStart >= 0))     
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
 				break;
 			case O3_Cloud:
-				if((ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.o3EaqL1)) && (ArcStart <= 225))      
-					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_WHITE);
-				else if((ArcStart < 225 - (int)(270.0f / MeasuRang * cloud.o3EaqL1)) && (ArcStart >= 225 - (int)(270.0f / MeasuRang * cloud.o3EaqL2)))  
+				if((ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.o3EaqL1)) && (ArcStart <= 225)){      
+					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart - 2,GUI_WHITE);
+					
+					if(sample_val > cloud.o3EaqL1) // 36
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
+				}
+				else if((ArcStart <= 225 - (int)(270.0f / MeasuRang * cloud.o3EaqL1)) && (ArcStart > 225 - (int)(270.0f / MeasuRang * cloud.o3EaqL2))){  
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_YELLOW);
-				else if((ArcStart < (int)(270.0f / MeasuRang * cloud.o3EaqL2)) && (ArcStart >= (int)(270.0f / MeasuRang * cloud.o3EaqL3)))  
+					
+					if(sample_val > cloud.o3EaqL2) // 75
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
+				}
+				else if((ArcStart <= (int)(270.0f / MeasuRang * cloud.o3EaqL2)) && (ArcStart > (int)(270.0f / MeasuRang * cloud.o3EaqL3))){  
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_ORANGE);
-				else if((ArcStart < (int)(270.0f / MeasuRang * cloud.o3EaqL3)) && (ArcStart >= 0))    
+					
+					if(sample_val > cloud.o3EaqL3) // 131
+						GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
+				}
+				else if((ArcStart <= (int)(270.0f / MeasuRang * cloud.o3EaqL3)) && (ArcStart >= 0))    
 					GUI_Set_Color_Value(sample_val,xPos,yPos,SENSOR,r,ArcStart,GUI_DARKORANGE);
 				break;
             case NA_TY:
@@ -1538,10 +1646,10 @@ static void DemoModeCallback(WM_MESSAGE * pMsg)
 		GUI_DrawBitmap(&bmtemperature, (LCD_GetXSize() - bmtemperature.XSize) / 2, (LCD_GetYSize() - bmtemperature.YSize) / 2 - 105) ;
 		GUI_MEMDEV_CopyToLCD(hMemBMP_);
 
-		GUI_Set_Ring_Indicator(sensor_cali_data.pm2005_cali_data, 	sensor_cali_data.pm2005_cali_data,	100, 330,PM2005_TY);
-		GUI_Set_Ring_Indicator(sensor_cali_data.voc_cali_data, 		sensor_cali_data.voc_cali_data,		300, 330,VOC_TY);
-		GUI_Set_Ring_Indicator(gMyData.iCO2, 						gMyData.iCO2,						500, 330,CO2_TY);
-		GUI_Set_Ring_Indicator(sensor_cali_data.h20_cali_data, 		sensor_cali_data.h20_cali_data,		700, 330,H20_TY); 
+		GUI_Set_Ring_Indicator(sensor_cali_data.pm2005_cali_data, 	sensor_cali_data.pm2005_cali_data, 100, 330,PM2005_TY);
+		GUI_Set_Ring_Indicator(sensor_cali_data.voc_cali_data, 		sensor_cali_data.voc_cali_data,	   300, 330,VOC_TY);
+		GUI_Set_Ring_Indicator(gMyData.iCO2, 						gMyData.iCO2,					   500, 330,CO2_TY);
+		GUI_Set_Ring_Indicator(sensor_cali_data.h20_cali_data, 		sensor_cali_data.h20_cali_data,	   700, 330,H20_TY); 
 		GUI_Temp_Disp(sensor_cali_data.temp_cail_data,-12,NULL);
         
 		if(GUI_Anim_Delay(100)) {
@@ -1601,15 +1709,59 @@ static uint32_t getAzureCloudTimestamp(char *cloudTimestamp){
 	return timeStamp/* - 28800*/; // -8小时，获取GMT
 }
 
-static void StandbyMode_Startup(void){
+static void alertModeSetting(uint8_t iaqVal)
+{
+	static uint8_t alerModeCtl = ALARM_FIRST;
+	//初次报警，必定是level 3到level 4
+	//初次报警后需判断IAQ值是lelev 4还是降到了level 3,如果level 4，禁止继续报警，如果level 3,进入允许报警状态
+	switch(alerModeCtl){
+		case ALARM_FIRST:
+			if(iaqVal >= ALERT_MODE_VALUE){
+				run_mode.alertModeEN = TRUE;
+				alerModeCtl = ALARM_STATUS;
+			}
+			else if(iaqVal < ALERT_MODE_VALUE){
+				run_mode.alertModeEN = FALSE;
+			}
+			break;
+		case ALARM_AGAIN:
+			if(iaqVal >= ALERT_MODE_VALUE){
+				run_mode.alertModeEN = TRUE;
+				alerModeCtl = ALARM_STATUS;
+			}
+			else if(iaqVal < ALERT_MODE_VALUE){
+				run_mode.alertModeEN = FALSE;
+			}
+			break;
+		case ALARM_STATUS:
+			if(iaqVal < ALERT_MODE_VALUE){
+				alerModeCtl = ALARM_AGAIN;
+				run_mode.alertModeEN = FALSE;
+			}	
+			break;
+		default:
+			break;
+	}
 
+	//printf("alert mode : %d------------\r\n",run_mode.alertModeEN);
+}
+
+static void alertModeWakeUpSetting(int iaqVal)
+{
+	if(iaqVal >= ALERT_MODE_VALUE){
+		run_mode.alertModeQuitFlag = TRUE;
+		run_mode.alertModeEN = TRUE;
+	}
+}
+
+static void StandbyMode_Startup(void){
     ili9806g_DisplayOff();	//关闭显示屏
 
     while(TRUE){
 		// 网络已连接/自动运行启动/当前的时间戳在合法范围内
 		if(WiFi_State.Network_OK && cloud.isAutoEn && cloud.autoModeCtl){
-		   cloud.startTimestamp = getAzureCloudTimestamp(cloud.autoFromDate);
-		   cloud.endTimestamp 	= getAzureCloudTimestamp(cloud.autoToDate);
+		   cloud.startTimestamp    = getAzureCloudTimestamp(cloud.autoFromDate);
+		   cloud.endTimestamp      = getAzureCloudTimestamp(cloud.autoToDate);
 		   cloud.comparedTimestamp = Sys_Task.wifi_hflpb100.expiry_time;
 
 		   if(cloud.startTimestamp != cloud.startTimestamp_ && cloud.startTimestamp < cloud.endTimestamp){
@@ -1624,6 +1776,9 @@ static void StandbyMode_Startup(void){
 					cloud.baseTimestamp = cloud.startTimestamp; // 设定的开始时间在当前时间前，以当前时间为准
 			}
 		}
+		else if(!WiFi_State.Network_OK || !cloud.isAutoEn){
+			cloud.startTimestamp_ = NULL;//网络断开或者进入假期模式时将对比的开始时间清空
+		}
 
 		if(cloud.isAutoEn && \
 		   cloud.endTimestamp > cloud.startTimestamp && \
@@ -1637,44 +1792,76 @@ static void StandbyMode_Startup(void){
 			if(cloud.autoTim == NULL){
 				if((cloud.comparedTimestamp - cloud.baseTimestamp) >= AUTO_RUN_TIM_0){
 					cloud.baseTimestamp += AUTO_RUN_TIM_0;
-					mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
-					printf("\r\n------standy mode out 0--------\r\n");
+					//mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
+					alertModeWakeUpSetting(cloud.iaq);
+					printf("\r\n------stand-by mode out 0--------\r\n");
 				}
 				else;
 			}
 			else if(cloud.autoTim == 1){
 				if((cloud.comparedTimestamp - cloud.baseTimestamp) >= AUTO_RUN_TIM_1){
 					cloud.baseTimestamp += AUTO_RUN_TIM_1;
-					mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
-					printf("\r\n------standy mode out 1--------\r\n");
+					//mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
+					alertModeWakeUpSetting(cloud.iaq);
+					printf("\r\n------stand-by mode out 1--------\r\n");
 				}
 				else;
 			}
 			else if(cloud.autoTim == 2){
 				if((cloud.comparedTimestamp - cloud.baseTimestamp) >= AUTO_RUN_TIM_2){
 					cloud.baseTimestamp += AUTO_RUN_TIM_2;
-					mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
-					printf("\r\n------standy mode out 2--------\r\n");
+					//mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
+					alertModeWakeUpSetting(cloud.iaq);
+					printf("\r\n------stand-by mode out 2--------\r\n");
 				}
 				else;
 			}
 			else{
 				if((cloud.comparedTimestamp - cloud.baseTimestamp) >= AUTO_RUN_TIM_0){
 					cloud.baseTimestamp += AUTO_RUN_TIM_0;
-					mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
-					printf("\r\n------standy mode out 0 else--------\r\n");
+					//mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
+					alertModeWakeUpSetting(cloud.iaq);
+					printf("\r\n------stand-by mode out 0 else--------\r\n");
 				}
 				else;
 			}
-		}	
+		}
+		   
+		holidayModeSetting();   
+		if(holidayModeQuit() == TRUE) //退出假期模式
+			break;
+		
+		//	判断警报条件
+		alertModeSetting(cloud.iaq);
+		// 报警模式判断，进入报警模式点亮显示屏，退出后熄屏,在假期模式下关闭警报模式
+		if(WiFi_State.Network_OK && run_mode.alertModeEN && cloud.mode_sys && cloud.isAutoEn){
+			run_mode.alertModeEN = FALSE;
+			ili9806g_DisplayOn(); //开启显示屏
+			Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),1,-0,160); // Not so good, I take care of it!
+			DEMO_Blow_Starup(ALERT_DISPLAY);//报警显示10分钟
+			//ili9806g_DisplayOff();	//关闭显示屏
+
+			if(run_mode.alertModeQuitFlag){
+				run_mode.alertModeQuitFlag =FALSE;
+				mode_switch.s_key_sci_button = S_KEY;	// 退出待机模式
+			}
+				
+			if(mode_switch.s_rst_button_ctl){ // 触控按键按下跳出待机模式
+				mode_switch.s_rst_button_ctl = FALSE;
+				break;
+			}
+
+			break;//不按触控按键进入正常工作模式
+    	}
 		
         if(GUI_Anim_Delay(1000)){
 			GUI_Anim_ClearUp();
+			run_mode.holidayModeQuitFlag = FALSE; // 短按触控按键退出假期模式
 			break;
 	    }
     }
 
-	GUI_Delay(50);
+	GUI_Delay(10);
 	ili9806g_DisplayOn(); //开启显示屏
 }
 
@@ -1691,6 +1878,8 @@ extern int Face_Appear_Fading_Smile_EAQ(const GUI_BITMAP *pBM, int x_offset, int
 extern int Face_Appear_Fading_Light_Smile_EAQ(const GUI_BITMAP *pBM, int x_offset, int y_offset);
 extern int Face_Appear_Fading_Light_Pout_EAQ(const GUI_BITMAP *pBM, int x_offset, int y_offset);
 extern int Face_Appear_Fading_Pout_EAQ(const GUI_BITMAP *pBM, int x_offset, int y_offset);
+extern int Face_Appear_Fading_NA(int x_offset, int y_offset);
+
 
 void  Six_Language_Display_Function(LANGUAGE_INDEX Language,char catg,int xpos,int ypos)   
 {    
@@ -1699,20 +1888,45 @@ void  Six_Language_Display_Function(LANGUAGE_INDEX Language,char catg,int xpos,i
     GUI_UC_SetEncodeUTF8();
     GUI_SetFont(&GUI_FontHelveticaNeueLTPro65Md48);
     GUI_GotoXY(xpos + LCD_GetXSize() / 2-220, ypos+LCD_GetYSize() / 2);
-	
+	//ê c3aa
+	//é c3a9
+	//è c3a8
+	//à c3a0
+	//? c3a7
+	//ì c3ac
+	//è c388
+	//á c3a1
+	//í c3ad
+	//ü c3bc
     switch(Language) {
         case FRENCH:// French
             GUI_GotoXY(xpos + LCD_GetXSize() / 2-220, ypos+LCD_GetYSize() / 2);
             if(catg == 0)            
-                GUI_DispStringHCenterAt("Vous 阾es connect?e)",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//Vous \xc3\xaates connect\xc3\xa9(e)
+                GUI_DispStringHCenterAt("Vous \xc3\xaates connect\xc3\xa9(e).",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//You are connected.
             else if(catg == 1) 
-                GUI_DispStringHCenterAt("Pas terrible, je m'en occupe!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);           
+                GUI_DispStringHCenterAt("Pas terrible, je m'en occupe!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //Not so good, I take care of it!        
             else if(catg == 2) 
-                GUI_DispStringHCenterAt("C'est g閚ial! Profitez-en!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);            
-            else if(catg == 3) 
-                GUI_DispStringHCenterAt("C'est g閚ial! Profitez de \nl'ext閞ieur!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);                              
+                GUI_DispStringHCenterAt("C'est g\xc3\xa9nial! Profitez-en!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//It's awesome! Enjoy!           
+            else if(catg == 3) 		   
+                GUI_DispStringHCenterAt("C'est g\xc3\xa9nial!\nProfitez de l'ext\xc3\xa9rieur!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//Awesome! Enjoy the outdoors!                          
             else if(catg == 4) 
-                GUI_DispStringHCenterAt("Je ne capte pas le WiFi",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);       
+                GUI_DispStringHCenterAt("Je ne capte pas le WiFi.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //I am unable to connect to Wi-Fi network.
+			else if(catg == 5)																			//To reset the system, press 3 seconds on:
+				GUI_DispStringHCenterAt("Pour r\xc3\xa9initialiser le syst\xc3\xa8me,\nappuyez 3 secondes sur:\n\n\n\nPour annuler, faites un appui court.",xpos + LCD_GetXSize() / 2,ypos + LCD_GetYSize() / 2 - 60);// To reset the system, press 3 seconds on.
+			else if(catg == 6)															
+				GUI_DispStringHCenterAt("Pour lancer la recalibration CO2,\nmerci de placer le produit proche \nd'une fen\xc3\xaatre ouverte puis de \nfaire un appui long sur le \nbouton sup\xc3\xa9rieur.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);// CO2 校准
+			else if(catg == 7) 
+				GUI_DispStringHCenterAt("Ca pourrait \xc3\xaatre mieux!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//It could be better!
+			else if(catg == 8) 
+				GUI_DispStringHCenterAt("A\xc3\xaf\x65, pas terrible!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//Ouch, it's not so good!
+			else if(catg == 9) 
+				GUI_DispStringHCenterAt("Sur la bonne voie...",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//On the right track...
+			else if(catg == 11) 
+				GUI_DispStringHCenterAt("Soyez attentif!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//Be careful!
+			else if(catg == 12) 
+				GUI_DispStringHCenterAt("Vous \xc3\xaates mieux \xc3\xa0 l'int\xc3\xa9rieur!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//You are better inside!
+			else if(catg == 13) 
+				GUI_DispStringHCenterAt("Hum... \xc3\xa7\x61 ne fonctionne pas...",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//Hmm... It doesn't work...
             break;
         case ENGLISH:// English
             if(catg == 0)            
@@ -1721,12 +1935,12 @@ void  Six_Language_Display_Function(LANGUAGE_INDEX Language,char catg,int xpos,i
                 GUI_DispStringHCenterAt("Not so good, I take care of it!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);           
             else if(catg == 2) 
                 GUI_DispStringHCenterAt("It's awesome! Enjoy!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);           
-            else if(catg == 3) 
-                GUI_DispStringHCenterAt("Awesome! Enjoy the outdoors!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);          
+            else if(catg == 3)
+                GUI_DispStringHCenterAt("Awesome! Enjoy the outdoors!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);    
             else if(catg == 4) 
-                GUI_DispStringHCenterAt("I am unable to connect to \nWi-Fi network.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+                GUI_DispStringHCenterAt("I am unable to connect to\nWi-Fi network.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
 			else if(catg == 5) 
-                GUI_DispStringHCenterAt("To reset the system, press 3 seconds on.\n\n\n\nTo skip, make a short press.",xpos + LCD_GetXSize() / 2,ypos + LCD_GetYSize() / 2 - 30);
+                GUI_DispStringHCenterAt("To reset the system, press 3 seconds on:\n\n\n\nTo skip, make a short press.",xpos + LCD_GetXSize() / 2,ypos + LCD_GetYSize() / 2 - 30);
 			else if(catg == 6) 
                 GUI_DispStringHCenterAt("To launch CO2 recalibration,\nplease keep me next to an open window \nand make a long press on top button.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
             else if(catg == 7) 
@@ -1746,56 +1960,122 @@ void  Six_Language_Display_Function(LANGUAGE_INDEX Language,char catg,int xpos,i
             break;   
         case ITALIAN:// Italien
             if( catg==0 )            
-                GUI_DispStringHCenterAt("Connessione riuscita",xpos + LCD_GetXSize() / 2+1,ypos+LCD_GetYSize() / 2);
-            else if( catg==1 ) 
-                GUI_DispStringHCenterAt("Cos?non va! me ne occupo io.",xpos + LCD_GetXSize() / 2+2,ypos+LCD_GetYSize() / 2);           
-            else if( catg==2 ) 
-                GUI_DispStringHCenterAt("Ottimo, approfittane!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);            
-            else if( catg==3 ) 
-                GUI_DispStringHCenterAt("Ottimo! Approfitta per stare \nall'aperto.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);          
-            else if( catg==4 ) 
-                GUI_DispStringHCenterAt("Non c'?il segnale WiFi",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);     
+                GUI_DispStringHCenterAt("Connessione riuscita.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//You are connected.
+            else if( catg== 1) 
+                GUI_DispStringHCenterAt("Cos\xc3\xacnon va! me ne occupo io.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //Not so good, I take care of it!          
+            else if( catg== 2) 
+                GUI_DispStringHCenterAt("Ottimo, approfittane!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//It's awesome! Enjoy!             
+            else if( catg== 3) 			
+                GUI_DispStringHCenterAt("Ottimo! Approfitta per stare all'aperto.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //Awesome! Enjoy the outdoors!         
+            else if( catg== 4) 
+                GUI_DispStringHCenterAt("Non c'\xc3\xa8il segnale WiFi.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //I am unable to connect to Wi-Fi network.
+			else if( catg== 5) 		   																
+                GUI_DispStringHCenterAt("Per riavviare tenere\npremuto per almeno 3 secondi:\n\n\n\nPer annullare, premere il tasto.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2 - 60); // To reset the system, press 3 seconds on.
+			else if( catg== 6) 	
+                GUI_DispStringHCenterAt("Per avviare la calibrazione CO2,\ntienimi vicino a una finestra \naperta e premi a lungo sul \npulsante superiore.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);// CO2校准
+			else if( catg== 7) 
+                GUI_DispStringHCenterAt("Potrebbe andar meglio!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //It could be better!
+			else if( catg== 8) 
+                GUI_DispStringHCenterAt("Accidenti, non \xc3\xa8 proprio il massimo!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //Ouch, it's not so good!
+			else if( catg== 9) 
+                GUI_DispStringHCenterAt("Sulla buona strada...",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //On the right track...
+			else if( catg== 11) 
+                GUI_DispStringHCenterAt("Fai attenzione!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //Be careful!
+			else if( catg== 12) 
+                GUI_DispStringHCenterAt("\xc3\x88meglio rimanere all'interno!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //You are better inside!
+			else if( catg== 13) 
+                GUI_DispStringHCenterAt("Connessione non riuscita.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); //Hmm... It doesn't work...
             break;          
         case SPALISH:// Spalish
             if(catg == 0)            
-                GUI_DispStringHCenterAt("Est?conectado(a)",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
-            else if(catg == 1) 
-                GUI_DispStringHCenterAt("o tan bien, me ocupo deello!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);            
+                GUI_DispStringHCenterAt("Est\xc3\xa1 conectado(a)",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+            else if(catg == 1) 			
+                GUI_DispStringHCenterAt("\xc2\xa1No tan bien, me ocupo de ello!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);            
             else if(catg == 2) 
-                GUI_DispStringHCenterAt("enial! isfrute!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);            
+                GUI_DispStringHCenterAt("\xc2\xa1Genial! \xc2\xa1\x44isfrute!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);            
             else if(catg == 3) 
-                GUI_DispStringHCenterAt("enial! isfrute del exterior!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);          
+                GUI_DispStringHCenterAt("\xc2\xa1Genial! \xc2\xa1\x44isfrute del exterior!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);          
             else if(catg == 4) 
-                GUI_DispStringHCenterAt("No capto la se馻l WiFi",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);       
+                GUI_DispStringHCenterAt("No capto la se\xc3\xb1\x61\x6c WiFi!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
+			else if(catg == 5) 		   															 
+                GUI_DispStringHCenterAt("Para resetear el sistema,\npulse 3 segundos sobre:\n\n\n\nPara cancelar, pulse brevemente.",xpos + LCD_GetXSize() / 2,ypos + LCD_GetYSize() / 2 - 60);
+			else if(catg == 6) 			
+                GUI_DispStringHCenterAt("Para iniciar el recalibrado CO2, \ncoloque el producto cerca de una ventana \nabierta y realice una pulsaci\xc3\xb3\x6e larga sobre \nel bot\xc3\xb3\x6e superior.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//CO2校准
+			else if(catg == 7) 
+                GUI_DispStringHCenterAt("\xc2\xa1Podr\xc3\xad\x61 ser mejor!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 8) 
+                GUI_DispStringHCenterAt("\xc2\xa1\x41y, no tan bien!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 9) 
+                GUI_DispStringHCenterAt("\xc2\xa1Genial! \xc2\xa1 Disfrute!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 11) 
+                GUI_DispStringHCenterAt("\xc2\xa1\x45st\xc3\xa9 atento!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 12) 
+                GUI_DispStringHCenterAt("\xc2\xa1\x45st\xc3\xa1 mejor dentro!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 13) 
+                GUI_DispStringHCenterAt("Hum... no funciona...",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
             break;   
         case GERMAN:// German
             if(catg == 0)            
-                GUI_DispStringHCenterAt("Sie sind verbunden",xpos + LCD_GetXSize() / 2+2,ypos+LCD_GetYSize() / 2);  
-            else if(catg == 1) 
-                GUI_DispStringHCenterAt("Nicht besonders, ich k黰mere \nmich darum!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2-9);              
+                GUI_DispStringHCenterAt("Sie sind verbunden.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);  
+            else if(catg == 1) 			
+                GUI_DispStringHCenterAt("Nicht besonders,\nich k\xc3\xbcmmere mich darum!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);              
             else if(catg == 2) 
-                GUI_DispStringHCenterAt("Das ist genial! Nutzen Sie \ndie Gelegenheit!",xpos + LCD_GetXSize() / 2+3,ypos+LCD_GetYSize() / 2-5);              
+                GUI_DispStringHCenterAt("Das ist genial!\nNutzen Sie die Gelegenheit!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2-5);              
             else if(catg == 3) 
                 GUI_DispStringHCenterAt("Das ist genial! Gehen Sie ins Freie!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);            
             else if(catg == 4) 
-                GUI_DispStringHCenterAt("Ich empfange kein WLAN-Signal",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);        
+                GUI_DispStringHCenterAt("Ich empfange kein WLAN-Signal.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
+			else if(catg == 5) 		   																	 
+                GUI_DispStringHCenterAt("Um das System zur\xc3\xbc\x63k zu setzen,\ndr\xc3\xbc\x63ken Sie 3 Sekunden :\n\n\n\nZum \xc3\xbc\x62\x65rspringen, bitte nur kurz dr\xc3\xbc\x63ken.",xpos + LCD_GetXSize() / 2,ypos + LCD_GetYSize() / 2 - 60); 
+			else if(catg == 6) 		  															
+                GUI_DispStringHCenterAt("Um eine CO2 Rekalibrierung \ndurchzuf\xc3\xbchren bringen Sie mich zu \neinem offenen Fenster und halten den \nTaster oben mehr als 3 Sek. \nGedr\xc3\xbc\x63kt.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//CO2校准 
+			else if(catg == 7) 
+                GUI_DispStringHCenterAt("K\xc3\xb6nnte besser sein!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
+			else if(catg == 8) 
+                GUI_DispStringHCenterAt("Autsch, nicht besonders!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
+			else if(catg == 9) 
+                GUI_DispStringHCenterAt("Auf dem richtigen Weg...",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
+			else if(catg == 11) 
+                GUI_DispStringHCenterAt("Seien Sie achtsam!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
+			else if(catg == 12) 		
+                GUI_DispStringHCenterAt("Zuhause sind Sie besser aufgehoben!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
+			else if(catg == 13) 
+                GUI_DispStringHCenterAt("Hm... l\xc3\xa4uft nicht...",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
             break; 
         case DUTCH:// Dutch
             if(catg == 0)            
-                GUI_DispStringHCenterAt("U bent verbonden",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);  
+                GUI_DispStringHCenterAt("U bent verbonden.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);  
             else if(catg == 1) 
                 GUI_DispStringHCenterAt("Niet zo goed, ik ben ermee bezig!",xpos + LCD_GetXSize() / 2+2,ypos+LCD_GetYSize() / 2);             
             else if(catg == 2) 
-                GUI_DispStringHCenterAt("Dat is geweldig! Profiteer \ner gerust van!",xpos + LCD_GetXSize() / 2+3,ypos+LCD_GetYSize() / 2);             
+                GUI_DispStringHCenterAt("Dat is geweldig!\nProfiteer er gerust van!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);             
             else if(catg == 3) 
-                GUI_DispStringHCenterAt("Dat is geweldig! Profiteer van \nde buitenlucht!",xpos + LCD_GetXSize() / 2+2,ypos+LCD_GetYSize() / 2);            
+                GUI_DispStringHCenterAt("Dat is geweldig!\nProfiteer van de buitenlucht!",xpos + LCD_GetXSize() / 2+2,ypos+LCD_GetYSize() / 2);            
             else if(catg == 4) 
-                GUI_DispStringHCenterAt("Geen WiFi-ontvangst hier",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);       
+                GUI_DispStringHCenterAt("Geen WiFi-ontvangst hier.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2); 
+			else if(catg == 5) 		  																		 			
+                GUI_DispStringHCenterAt("Om het systeem te resetten,\ngelieve 3 seconden te drukken op:\n\n\n\nOm te verwijderen, druk kort in.",xpos + LCD_GetXSize() / 2,ypos + LCD_GetYSize() / 2 - 60);
+			else if(catg == 6)
+                GUI_DispStringHCenterAt("Om CO2-herkalibratie te starten, \nplaatst u het product in de buurt \nvan een open raam en drukt u \nvervolgens lang op de bovenste knop.",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);//
+			else if(catg == 7) 
+                GUI_DispStringHCenterAt("Het zou beter kunnen zijin!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 8) 
+                GUI_DispStringHCenterAt("Oh, niet zo goed!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 9) 
+                GUI_DispStringHCenterAt("Op de goede weg...",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 11) 
+                GUI_DispStringHCenterAt("Wees voorzichtig!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 12) 
+                GUI_DispStringHCenterAt("U zou beter binnen blijven!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 13) 
+                GUI_DispStringHCenterAt("Hmm... Het werkt niet...",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
+			else if(catg == 14) 
+                GUI_DispStringHCenterAt("Het zou beter kunnen!",xpos + LCD_GetXSize() / 2,ypos+LCD_GetYSize() / 2);
         break; 
     }   
 }    
 
-static void brightnessSetting(void)  
+/*static*/ void brightnessSetting(void)  
 { 
     char *env_buf;
     uint8_t lumi;
@@ -1815,18 +2095,18 @@ static void brightnessSetting(void)
         lumi = 2;
         
     if(lumi == NULL)
-        cloud.lumi_para_ = 30;
+        cloud.lumi_para_ = 20;   // 20%亮度
     else if(lumi == 1)
-        cloud.lumi_para_ = 60;
+        cloud.lumi_para_ = 50;	 // 50%亮度
     else if(lumi== 2)
-        cloud.lumi_para_ = 90;
+        cloud.lumi_para_ = 90;	 // 90%亮度
     else
         cloud.lumi_para_ = 90;
   
     TIM_SetTIM2Compare4(cloud.lumi_para_);
 }
 
-static void brightnessCntl(void) 
+static int brightnessCntl(void) 
 {
     char env_buf[8] = { 0 };
 
@@ -1835,9 +2115,9 @@ static void brightnessCntl(void)
         cloud.lumi_ctrl = FALSE;
         
         if(cloud.lumi == NULL)
-            cloud.lumi_para = 30;
+            cloud.lumi_para = 20;
         else if(cloud.lumi == 1)
-            cloud.lumi_para = 60;
+            cloud.lumi_para = 50;
         else if(cloud.lumi == 2)
             cloud.lumi_para = 90;
         else
@@ -1853,7 +2133,7 @@ static void brightnessCntl(void)
         }
     }
     else
-        return;
+        return -1;
 }
 
 static void _devRunModeCtl(Run_Mode_Cntl iaq, Run_Mode_Cntl iaq_exp, Run_Mode_Cntl eaq, Run_Mode_Cntl eaq_exp){
@@ -1869,23 +2149,33 @@ static void _devRunModeSelect(uint8_t mode){
     if(mode == NULL)
         _devRunModeCtl(ON,ON,ON,ON);    // principle and detailed
     else if(mode == 1)
-        _devRunModeCtl(ON,ON,OFF,OFF);  // principle
+        _devRunModeCtl(ON,OFF,ON,OFF);  // principle
     else if(mode == 2)
-        _devRunModeCtl(OFF,OFF,ON,ON);  // detailed
+        _devRunModeCtl(OFF,ON,OFF,ON);  // detailed
     else
         _devRunModeCtl(ON,ON,ON,ON);    // default
 }
 
 static void _devFavorModeSelect(uint8_t mode){
 
-    if(mode == NULL)
+    if(mode == NULL){
         _devRunModeCtl(ON,OFF,OFF,OFF);     // principle indoor air quality
-    else if(mode == 1)
+        run_mode.mode = 0;				    // 直接跳转到mode_0
+    }
+    else if(mode == 1){
         _devRunModeCtl(OFF,ON,OFF,OFF);     // detailed indoor air quality
-    else if(mode == 2)
+        run_mode.mode = 1;
+    }
+    else if(mode == 2){
         _devRunModeCtl(OFF,OFF,ON,OFF);     // principle outdoor air quality
-    else
+        run_mode.mode = 2;
+    }
+    else if(mode == 3){
         _devRunModeCtl(OFF,OFF,OFF,ON);     // detailed outdoor air quality
+        run_mode.mode = 3;
+    }
+    else
+		return;
 }
 
 static void selectedModeSetting(void){
@@ -1953,17 +2243,19 @@ static void _devFavorModeSelectCntl(uint8_t mode){
         if(mode == NULL)                // indoor air quality(pm2.5/co2/voc/h2o)
             _devFavorModeSelect(NULL);
         else if(mode == 1)              // outdoor air quality(iaq)
-            _devFavorModeSelect(2);
+            _devFavorModeSelect(1);
         else 
-            _devFavorModeSelect(NULL);
+            /*_devFavorModeSelect(NULL);*/
+			return;
     }
     else if(cloud.dispScreen_ == 2){    // detailed
         if(mode == NULL)                // indoor air quality(pm2.5/pm10/no2/o3)
-            _devFavorModeSelect(1);
+            _devFavorModeSelect(2);
         else if(mode == 1)              // outdoor air quality(eaq)
             _devFavorModeSelect(3);
         else
-            _devFavorModeSelect(1);
+            /*_devFavorModeSelect(1);*/
+			return;
     }
     else
         return;
@@ -1989,7 +2281,9 @@ static void favoriteModeSetting(void){
 static void favoriteModeCntl(void){
     char env_buf[8] = {0};
 
-    if(run_mode.favor_mode_en && !run_mode.demo_mode_en){ // 	防止在Demo模式下误触进入常用模式
+    if(run_mode.favor_mode_en && !run_mode.demo_mode_en){ // 防止在Demo模式下误触进入常用模式
+    	run_mode.favor_mode_en = FALSE; // 退出常用模式
+    	cloud.dispScreenCntl = TRUE;    // 进入运行模式
         _devFavorModeSelectCntl(cloud.favor_);
 		
         cloud.favorModeFlag = TRUE;
@@ -2053,11 +2347,11 @@ static void lguPkgSetting(void)
 				cloud.laguSetting_ = FRENCH;
 			else if((memcmp(env_buf,"it",strlen("it"))) == NULL)
 				cloud.laguSetting_ = ITALIAN;
-			else if((memcmp(env_buf,"ge",strlen("ge"))) == NULL)
+			else if((memcmp(env_buf,"de",strlen("de"))) == NULL)
 				cloud.laguSetting_ = GERMAN;
-			else if((memcmp(env_buf,"sp",strlen("sp"))) == NULL)
+			else if((memcmp(env_buf,"nl",strlen("nl"))) == NULL)
 				cloud.laguSetting_ = SPALISH;
-			else if((memcmp(env_buf,"du",strlen("du"))) == NULL)
+			else if((memcmp(env_buf,"es",strlen("es"))) == NULL)
 				cloud.laguSetting_ = DUTCH;
 			else
 				cloud.laguSetting_ = ENGLISH;
@@ -2072,18 +2366,18 @@ static void lguPkgCntl(void)
     if(cloud.laguCtl) {
         cloud.laguCtl = FALSE;
 
-		if((memcmp(cloud.lagu,"en",strlen("en"))) == NULL)
+		if((memcmp(cloud.lagu,"en",strlen("en"))) == NULL) 		  	// 英语
 			cloud.laguSetting = ENGLISH;
-		else if((memcmp(cloud.lagu,"fr",strlen("fr"))) == NULL)
+		else if((memcmp(cloud.lagu,"fr",strlen("fr"))) == NULL) 	// 法语
 			cloud.laguSetting = FRENCH;
-		else if((memcmp(cloud.lagu,"it",strlen("it"))) == NULL)
+		else if((memcmp(cloud.lagu,"it",strlen("it"))) == NULL) 	// 意大利语
 			cloud.laguSetting = ITALIAN;
-		else if((memcmp(cloud.lagu,"ge",strlen("ge"))) == NULL)
+		else if((memcmp(cloud.lagu,"de",strlen("de"))) == NULL) 	// 德语
 			cloud.laguSetting = GERMAN;
-		else if((memcmp(cloud.lagu,"sp",strlen("sp"))) == NULL)
-			cloud.laguSetting = SPALISH;
-		else if((memcmp(cloud.lagu,"du",strlen("du"))) == NULL)
+		else if((memcmp(cloud.lagu,"nl",strlen("nl"))) == NULL) 	// 荷兰语
 			cloud.laguSetting = DUTCH;
+		else if((memcmp(cloud.lagu,"es",strlen("es"))) == NULL) 	// 西班牙语
+			cloud.laguSetting = SPALISH;
 		else
 			cloud.laguSetting = ENGLISH;
     
@@ -2096,20 +2390,59 @@ static void lguPkgCntl(void)
         return;
 }
 
+//假期模式设置
+static int holidayModeSetting(void)
+{
+	// 假期模式启动，直接进入待机模式
+	if(WiFi_State.Network_OK && cloud.isAutoEnCtl && !cloud.isAutoEn && run_mode.holidayModeQuitFlag){
+		//printf("enter into holiday mode\r\n");
+		//if(!run_mode.holidayModeQuitFlag){
+			//GUI_Anim_ClearUp();
+			//run_mode.run_loop_count = NULL;
+			//run_mode.state = Mode_Standy;
+			run_mode.holidayModeEn = TRUE;
+			
+			return TRUE;
+		//}
+	}
+
+	return FALSE;
+}
+
+//假期模式退出
+static int holidayModeQuit(void)
+{
+	// 退出假期模式
+	//printf("holiday settting %d %d %d %d-------------\r\n",WiFi_State.Network_OK,cloud.isAutoEnCtl,cloud.isAutoEn,run_mode.holidayModeEn);
+	if(WiFi_State.Network_OK && cloud.isAutoEnCtl && cloud.isAutoEn && run_mode.holidayModeEn){
+		
+		GUI_Anim_ClearUp();
+		run_mode.holidayModeEn = FALSE;
+		run_mode.run_loop_count = NULL;
+		run_mode.state = Mode_Select;
+		return TRUE;
+	}
+		
+	return FALSE;
+}
+
 static void runModeManagement(void){
 
 	if(!cloud.favorModeFlag)
 		run_mode.run_loop_count++; // 运行周期计数
 	
     printf("work_mode_run_loops: %d\r\n",(int)run_mode.run_loop_count);
-	
-	if(run_mode.run_loop_count == 3 && !run_mode.demo_mode_en) {
+
+	// 进入待机模式,开机时长按按键无法进入待机模式，此时演示模式被启动，但网络正常,无法进入演示模式，导致设备一直运行
+	if(run_mode.run_loop_count >= 3 && (!run_mode.demo_mode_en || WiFi_State.Network_OK)) {
 		GUI_Anim_ClearUp();
 		run_mode.run_loop_count = NULL;
 		run_mode.state = Mode_Standy;
+		run_mode.holidayModeQuitFlag = TRUE;
+		holidayModeSetting();// 允许3圈后进入假期模式
 	}
-    
-    if(run_mode.run_loop_count == 3 && run_mode.demo_mode_en && !WiFi_State.Network_OK) {
+    // 进入Demo模式
+    if(run_mode.run_loop_count >= 3 && run_mode.demo_mode_en && !WiFi_State.Network_OK) {
 		GUI_Anim_ClearUp();
 		run_mode.demo_mode_en = FALSE;
 		run_mode.demo_mode_done = TRUE;
@@ -2117,6 +2450,7 @@ static void runModeManagement(void){
 		run_mode.state = Mode_Demo_Mode;
     }
 }
+
 
 /************************************************************************
 *
@@ -2144,23 +2478,29 @@ static void AnimRunStateManagement(void)
 	    case Mode_Compagnon_AQI_House:
         	GUI_Draw_Bitmap_Centre(&bmmaihouse);
 
-            if(!WiFi_State.Network_OK)
-                    cloud.iaq = 0xFF;
-            
+            if(!WiFi_State.Network_OK){
+                    cloud.iaq = 0x7F;
+            }
+            	
 			GUI_MEMDEV_Select(0);
-            if(/*cloud.iaq >= 0 && */cloud.iaq <= 25)
+            if(cloud.iaq <= 25)
                 ret = Face_Appear_Fading_Smile_IAQ(&bmhouse_smile,NULL,-45);
             else if(cloud.iaq > 25 && cloud.iaq <= 50)
                 ret = Face_Appear_Fading_Light_Smile_IAQ(&bmlightsmile,NULL,-45);
             else if(cloud.iaq > 50 && cloud.iaq <= 75)
                 ret = Face_Appear_Fading_Light_Pout_IAQ(&bmlightpout,NULL,-45);
-            else if(cloud.iaq > 75 && cloud.iaq < 100)
+            else if(cloud.iaq > 75 && cloud.iaq <= 100)
                 ret = Face_Appear_Fading_Pout_IAQ(&bmpout,NULL,-45);
             else
-                ret = Face_Appear_Fading_Smile_IAQ(&bmhouse_smile,NULL,-45);
+            {
+                //ret = Face_Appear_Fading_Smile_IAQ(&bmhouse_smile,NULL,-45);
+                //GUI_Display_IAQ_NA(NULL,-86);
+                ret = Face_Appear_Fading_NA(NULL,-86);
+				
+            }
             
 			if(ret == NULL){
-                if(/*cloud.iaq >= 0 && */cloud.iaq < 100){               
+                if(cloud.iaq < 100){               
                     sprintf(inttostrf,"%d",cloud.iaq);
     				GUI_Display_IAQ_Value(inttostrf,NULL,-95);
 			    }
@@ -2174,20 +2514,21 @@ static void AnimRunStateManagement(void)
 
 				if(GUI_Set_Bitmap_Scale(&bmmaihouse, 650, 650, 15) == 1){
 					GUI_MEMDEV_Select(0);
-                    
-                    if(/*cloud.iaq >= 0 && */cloud.iaq <= 25)
+
+                    if(cloud.iaq <= 25)
 					    Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),2,0,50);		// It's awesome! Enjoy! 
-					else if(cloud.iaq > 25 && cloud.iaq < 50)
+					else if(cloud.iaq > 25 && cloud.iaq <= 50)
                         Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),9,0,50);		// On the right track…
                     else if(cloud.iaq > 50 && cloud.iaq <= 75)
                         Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),7,0,50);		// It could be better!
                     else if(cloud.iaq > 75 && cloud.iaq <= 100)
                         Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),8,0,50);		// Ouch, it's not so good!
                     else {
-						if(run_mode.demo_mode_en)
-							GUI_Display_IAQ_na(NULL,40);					// Demo mode "n/a"
-						else
-                        	Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),2,0,50);		// It's awesome! Enjoy!
+						//if(run_mode.demo_mode_en)
+						//	GUI_Display_IAQ_na(NULL,40);					// Demo mode display "n/a"
+						//else
+							GUI_Display_IAQ_na(NULL,37);					// WIFI lost display "n/a"
+                        	//Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),2,0,50);		// It's awesome! Enjoy!
                     }
 					
 					if(GUI_Anim_Delay(3000)){
@@ -2222,29 +2563,19 @@ static void AnimRunStateManagement(void)
 			break;
 		case Mode_Expert_AQI:
 			if ((GUI_Set_Scale_Pos(&bmmaihouse, &bmtemperature,520, 520, 15) == 1)){
-				  //SENSORTaskPend();
 				  GUI_Set_Ring_Indicator(sensor_cali_data.pm2005_cali_data, sensor_cali_data.pm2005_cali_data,	100, 330,PM2005_TY);
 				  GUI_Set_Ring_Indicator(sensor_cali_data.voc_cali_data, 	sensor_cali_data.voc_cali_data,		300, 330,VOC_TY);
 				  GUI_Set_Ring_Indicator(gMyData.iCO2, 						gMyData.iCO2,						500, 330,CO2_TY);
 				  GUI_Set_Ring_Indicator(sensor_cali_data.h20_cali_data, 	sensor_cali_data.h20_cali_data,		700, 330,H20_TY); 
 				  GUI_Temp_Disp(sensor_cali_data.temp_cail_data,-12,NULL);
-				  //SENSORTaskPost();
 				
 				if(GUI_Anim_Delay(15*1000)){
 					GUI_Anim_ClearUp();
 
-					if(cloud.dispScreen_ == 1 && !run_mode.favor_mode_en){ // 常用模式下不计数，即不进入待机模式
-						// 计数 Demo / Favorite 控制 选择AQI模式
-						runModeManagement();
-					}
 					break;
 				}
 				
 				run_mode.state = Mode_Black_Screen;
-				
-				if(cloud.dispScreen_ == 1 && !run_mode.favor_mode_en){
-					runModeManagement();
-				}
 			}
 			break;
 		case Mode_Black_Screen:
@@ -2279,7 +2610,7 @@ static void AnimRunStateManagement(void)
            }
 
             GUI_MEMDEV_Select(0);
-            if(/*cloud.eaq >= 0 && */cloud.eaq <= 25)
+            if(cloud.eaq <= 25)
                 ret = Face_Appear_Fading_Smile_EAQ(&bmhouse_smile,40,-45);
             else if(cloud.eaq > 25 && cloud.eaq <= 50)
                 ret = Face_Appear_Fading_Light_Smile_EAQ(&bmlightsmile,40,-45);
@@ -2288,10 +2619,13 @@ static void AnimRunStateManagement(void)
             else if(cloud.eaq > 75 && cloud.eaq <= 100)
                 ret = Face_Appear_Fading_Pout_EAQ(&bmpout,40,-45);
             else
-                ret = Face_Appear_Fading_Smile_EAQ(&bmhouse_smile,40,-45);
+            {
+                //ret = Face_Appear_Fading_Smile_EAQ(&bmhouse_smile,40,-45);
+                ret = Face_Appear_Fading_NA(45,-80);
+            }
             
             if(ret == NULL) {
-                if(/*cloud.eaq >= 0 && */cloud.eaq < 100){
+                if(cloud.eaq < 100){
                     sprintf(inttostrf,"%d",cloud.eaq);
     				GUI_Display_IAQ_Value(inttostrf,45,-95);
                 }
@@ -2306,34 +2640,55 @@ static void AnimRunStateManagement(void)
 				if((GUI_Set_Bitmap_Scale(&bmcloud, 650, 650, 15) == 1)) {
 					GUI_MEMDEV_Select(0);
                     
-                    if(/*cloud.eaq >= 0 && */cloud.eaq <= 25)
+                    if(cloud.eaq <= 25)
 					    Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),3,0,55);		// Awesome! Enjoy the outdoors!
-					else if(cloud.eaq > 25 && cloud.eaq <= 50)
-                        Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),7,0,55);		// It could be better!
-                    else if(cloud.eaq > 50 && cloud.eaq <= 75)
-                        Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),11,0,55);		// Be careful!
-                    else if(cloud.eaq > 75 && cloud.eaq <= 100)
-                        Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),12,0,55);		// You are better inside!
-                    else{
-						if(run_mode.demo_mode_en)
-							 GUI_Display_IAQ_na(NULL,40);					// Demo mode "n/a"
+					else if(cloud.eaq > 25 && cloud.eaq <= 50){
+						if((lguPkgSwitch(cloud.laguSetting_)) == DUTCH)
+							Six_Language_Display_Function(DUTCH,14,0,55);		// Het zou beter kunnen!
 						else
-                        	Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),3,0,55);		// Awesome! Enjoy the outdoors!
+                        	Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),7,0,55);		// It could be better!  
+					}
+                    else if(cloud.eaq > 50 && cloud.eaq <= 75)
+                        Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),11,0,55);	// Be careful!
+                    else if(cloud.eaq > 75 && cloud.eaq <= 100)
+                        Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),12,0,55);	// You are better inside!
+                    else{
+						//if(run_mode.demo_mode_en)
+						//	 GUI_Display_IAQ_na(NULL,40);					// Demo mode  display "n/a"
+						//else
+							GUI_Display_IAQ_na(NULL,37);					// WIFI lost display "n/a"
+                        	//Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),3,0,55);		// Awesome! Enjoy the outdoors!
                     }
 					
 					if(GUI_Anim_Delay(3000)){
 						GUI_Anim_ClearUp();
+						/*
+						if(cloud.dispScreen_ == 1 && !run_mode.favor_mode_en){ // 常用模式下不计数，即不进入待机模式
+							// 计数 Demo / Favorite 控制 选择AQI模式
+							runModeManagement();
+						}
+						*/
 						break;
 					}
 				}
 					
 				run_mode.state = Mode_Select;
+
+				if(cloud.dispScreen_ == 1 && !run_mode.favor_mode_en){
+					runModeManagement();
+					run_mode.state = Mode_AQE_Black_Screen;
+				}
 			}
 			else{
 				if(GUI_Anim_Delay(0))
 					GUI_Anim_ClearUp();
 				
 				run_mode.state = Mode_Select;
+
+				if(cloud.dispScreen_ == 1 && !run_mode.favor_mode_en){
+					runModeManagement();
+					run_mode.state = Mode_AQE_Black_Screen;
+				}
 			}
         	break; 
 		case Mode_Compagnon_AQE_NUM:
@@ -2354,7 +2709,6 @@ static void AnimRunStateManagement(void)
         	break; 
 	    case Mode_Expert_AQE:
 			if ((GUI_Set_Scale_Pos(&bmcloud,&bmcloud_temp, 520, 520, 15) == 1)) {
-
                 //SENSORTaskPend();
                 if(cloud.pm25 == 0x7FFF)
                     GUI_Set_Ring_Indicator(cloud.pm25, cloud.pm25, 100, 330,NA_TY);
@@ -2381,9 +2735,9 @@ static void AnimRunStateManagement(void)
 					GUI_Anim_ClearUp();
 
 					// 计数 Demo / Favorite 控制，选择FULL/AQE模式
-					if(!run_mode.favor_mode_en)
+					if(!run_mode.favor_mode_en){
 						runModeManagement();
-					
+					}
 					break;
 				}
 					
@@ -2404,6 +2758,10 @@ static void AnimRunStateManagement(void)
 			run_mode.state = Mode_ALERT_NO_WIFI;
 	    	break;
 		case Mode_Select:
+			/*
+			if(holidayModeSetting() == TRUE)  // 假期模式
+				break;
+			*/
 			lguPkgCntl();			// 语言选择
             brightnessCntl();		// 亮度控制
             selectedModeCntl();		// 运行模式选择控制
@@ -2442,8 +2800,8 @@ static void AnimRunStateManagement(void)
 			GUI_MEMDEV_Select(0);
 			GUI_MEMDEV_Clear(hMemBMP_);
 			GUI_Clear();
-            Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),1,-0,160); // Not so good, I take care of it!
-			DEMO_Blow_Starup(3000u); // 10min?
+            Six_Language_Display_Function(lguPkgSwitch(cloud.laguSetting_),1,0,130); // Not so good, I take care of it!
+			DEMO_Blow_Starup(ALERT_DISPLAY); // 10min 200ms * 5000
 			GUI_Clear();
 			run_mode.state = Mode_Select;
 			break;
@@ -2458,8 +2816,12 @@ static void AnimRunStateManagement(void)
 				WM_MULTIBUF_Enable(1);
 				GUI_Clear();
 			}
-            if(WiFi_State.Network_OK && cloud.iaq >= 76 && cloud.iaq < 100 && cloud.mode_sys == TRUE) 
+			//判断是否符合警报条件
+			alertModeSetting(cloud.iaq);
+            if(WiFi_State.Network_OK && run_mode.alertModeEN && cloud.mode_sys){
+				run_mode.alertModeEN = FALSE;
                 run_mode.state = Mode_ALERT_BOAST;
+            }
             else
 			    run_mode.state = Mode_Select;
 			break;
@@ -2515,7 +2877,7 @@ static void AnimStartStateManagement(void)
 			    startup_mode.startup_state = STARTUP_APPDOWNLOAD;
 			break; 
 		case STARTUP_APPDOWNLOAD:
-			GUI_DrawBitmap(&bmpp_download, (LCD_GetXSize() - bmpp_download.XSize) / 2, (LCD_GetYSize() - bmpp_download.YSize) / 2);
+			GUI_DrawBitmap(&bmappdownload, (LCD_GetXSize() - bmappdownload.XSize) / 2, (LCD_GetYSize() - bmappdownload.YSize) / 2);
 
             while(TRUE) {
                 if(Bluetooth_State.ble_conn_sta) {
@@ -2539,10 +2901,8 @@ static void AnimStartStateManagement(void)
             */
 			break; 
 		case STARTUP_Bluetooth: 
-			//WM_MULTIBUF_Enable(0);
-			DEMO_Ble_Starup(!Bluetooth_State.ble_recv_done);
+			DEMO_Ble_Starup(TRUE); // 接收完成或者接收出错
             Bluetooth_State.ble_recv_done = FALSE;
-			//WM_MULTIBUF_Enable(1);
 			GUI_Clear();
 
             if(mode_switch.l_key_sci_button){
@@ -2562,7 +2922,8 @@ static void AnimStartStateManagement(void)
             Bluetooth_State.wifi_connect_error = FALSE;
             WiFi_State.RecTimeOut = FALSE;
             appCtl.AppFactroyCtr = FALSE; // 开启报错
-			while(!WiFi_State.Login_OK && !Bluetooth_State.wifi_connect_error/* && !WiFi_State.RecTimeOut*/) {
+            GUI_Clear();
+			while(!WiFi_State.Login_OK && !Bluetooth_State.wifi_connect_error && !Bluetooth_State.ble_recv_error) {
 				GUI_Draw_Arc_Standard(0);
 				GUI_Clear();
 			}
@@ -2574,14 +2935,18 @@ static void AnimStartStateManagement(void)
             }
             else if(WiFi_State.RecTimeOut) {    // go to no wifi??
                 WiFi_State.RecTimeOut = FALSE;
-                startup_mode.startup_state = /*STARTUP_APPDOWNLOAD*/STARTUP_Black_Screen;
+                startup_mode.startup_state = STARTUP_Black_Screen;
             }
             else if(Bluetooth_State.wifi_connect_error) {   // cloud error,go to app download
                 Bluetooth_State.wifi_connect_error = FALSE;
-                startup_mode.startup_state = /*STARTUP_APPDOWNLOAD*/STARTUP_Black_Screen;
+                startup_mode.startup_state = STARTUP_Black_Screen;
             }
             else if(WiFi_State.Login_OK)    // successful!
 			    startup_mode.startup_state = STARTUP_Black_Screen;
+			else{
+				Bluetooth_State.ble_recv_error = FALSE; // 接收出错处理
+				startup_mode.startup_state = STARTUP_Black_Screen;
+			}
 			break; 
 		case STARTUP_Black_Screen:
 			GUI_Clear();
@@ -2637,7 +3002,6 @@ static void AnimStartStateManagement(void)
 	}
 }
 
-
 /*********************************************************************
 *
 *       Public code
@@ -2650,9 +3014,8 @@ static void AnimStartStateManagement(void)
 */
 
 void MainTask(void) {
-
   brightnessSetting();  // 亮度设置
-  lguPkgSetting();		//语言选择
+  lguPkgSetting();		// 语言选择
   /*WM_SetCreateFlags(WM_CF_MEMDEV);*/
   GUI_Init();
   WM_MULTIBUF_Enable(1);

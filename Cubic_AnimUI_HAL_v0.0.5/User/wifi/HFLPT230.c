@@ -7,20 +7,18 @@
 extern void  WIFITaskPend ( void );
 extern void  WIFITaskPost ( void);
 extern void  Uart3RecTimerStart (void);
-static int https_resp_process(uint8_t *cloud_data_temp);
-
-
+static int https_recv_process(uint8_t *cloud_data_temp);
 /*############################################################################*/
 
-extern azure_cloud cloud;
-extern OS_TMR 	tmr1;		//timer1
-extern OS_TMR	tmr2;		//timer2
+extern azure_cloud 	cloud;
+extern OS_TMR 		tmr1;		//timer1
+extern OS_TMR		tmr2;		//timer2
 
-WIFI_CTR WiFi_State;
-EWifiMode gWifiState;
-Bluetooth_Login Bluetooth_State;
+WIFI_CTR 			WiFi_State;
+EWifiMode 			gWifiState;
+Bluetooth_Login 	Bluetooth_State;
 
-static unsigned char   Rx_Buffer[1536] = {0};  // 接收缓冲区
+static unsigned char   Rx_Buffer[2048] = {0};  // 接收缓冲区
 static unsigned int    Rx_Length = 0;
 static unsigned char   Tx_Buffer[1024] = {0};  // 发送缓冲区
 static unsigned int    Tx_Length = 0;
@@ -284,13 +282,11 @@ extern int paramProtocolLoad(Param_t *param, uint32_t addr);
 void Send_Cmd_name(unsigned char * data_temp,unsigned int * data_length,WIFI_State *wifi_State)
 {
 	unsigned char ssid_plus[128]= {"AT+WSSSID=RD-2\r"};
-    char *env_buf;
+    //char *env_buf;
 	
 	if(Sys_Task.blue_cfg_flag) {  
-        Param_t SSID_CMD;
-        
-		memset(Sys_Task.SSID,0,sizeof(Sys_Task.SSID));
-        
+        //Param_t SSID_CMD;
+		memset(Sys_Task.SSID,NULL,sizeof(Sys_Task.SSID));
         #if 0
         #if 0
 		sf_ReadBuffer((u8 *)Sys_Task.SSID, SSID_ADDR, sizeof(Sys_Task.SSID));
@@ -298,19 +294,18 @@ void Send_Cmd_name(unsigned char * data_temp,unsigned int * data_length,WIFI_Sta
         paramProtocolLoad(&SSID_CMD,SSID_ADDR);
         #endif
         #endif
-
-        env_buf = ef_get_env(ssid);
+        //env_buf = ef_get_env(ssid);
         
 		memset(ssid_plus + 10,NULL,118);
 		//memcpy(ssid_plus + 10,Sys_Task.SSID,strlen(Sys_Task.SSID));
 		//memcpy(ssid_plus + 10,SSID_CMD.paramBuf,strlen(SSID_CMD.paramBuf));
         //memcpy(Sys_Task.SSID,SSID_CMD.paramBuf,strlen(SSID_CMD.paramBuf));
 
-        memcpy(ssid_plus + 10,env_buf,strlen(env_buf));
-        memcpy(Sys_Task.SSID,env_buf,strlen(env_buf));
+        memcpy(ssid_plus + 10,/*env_buf*/Bluetooth_State.SSID,strlen(/*env_buf*/Bluetooth_State.SSID));
+        memcpy(Sys_Task.SSID, /*env_buf*/Bluetooth_State.SSID,strlen(/*env_buf*/Bluetooth_State.SSID));
         
 		strncat((char *)ssid_plus,"\r",1);
-		printf("Send_Cmd_name SSID %s\r\n",ssid_plus);
+		//printf("Send_Cmd_name SSID %s\r\n",ssid_plus);
 
 		Sys_Task.ssid_cfg_flag = TRUE;
 	}
@@ -320,7 +315,7 @@ void Send_Cmd_name(unsigned char * data_temp,unsigned int * data_length,WIFI_Sta
 		strncat((char *)ssid_plus,"\r",1);
 	}
 	
-	(* data_length) = strlen((const char *)ssid_plus);
+	(*data_length) = strlen((const char *)ssid_plus);
 	memcpy(data_temp,ssid_plus,strlen((const char *)ssid_plus));
 
 }
@@ -328,12 +323,12 @@ void Send_Cmd_name(unsigned char * data_temp,unsigned int * data_length,WIFI_Sta
 void Send_Cmd_Secret(unsigned char * data_temp,unsigned int * data_length,WIFI_State *wifi_State)
 {
 	unsigned char pass_plus[128]= {"AT+WSKEY=wpa2psk,aes,301301301\r"};
-    char *env_buf;
+    //char *env_buf;
 
 	if(Sys_Task.blue_cfg_flag){  
-        Param_t PASS_CMD;
+        //Param_t PASS_CMD;
             
-		memset(Sys_Task.PASS,0,sizeof(Sys_Task.PASS));
+		memset(Sys_Task.PASS,NULL,sizeof(Sys_Task.PASS));
         #if 0
         #if 0
 		sf_ReadBuffer((u8 *)Sys_Task.PASS, PASS_ADDR, sizeof(Sys_Task.PASS));
@@ -341,18 +336,18 @@ void Send_Cmd_Secret(unsigned char * data_temp,unsigned int * data_length,WIFI_S
         paramProtocolLoad(&PASS_CMD,PASS_ADDR);
         #endif
         #endif
-        env_buf = ef_get_env(pass);
+        //env_buf = ef_get_env(pass);
         
 		memset(pass_plus + 21,NULL,106);
 		//memcpy(pass_plus + 21,Sys_Task.PASS,strlen(Sys_Task.PASS));
 		//memcpy(pass_plus + 21,PASS_CMD.paramBuf,strlen(PASS_CMD.paramBuf));
         //memcpy(Sys_Task.PASS,PASS_CMD.paramBuf,strlen(PASS_CMD.paramBuf));
 
-        memcpy(pass_plus + 21,env_buf,strlen(env_buf));
-        memcpy(Sys_Task.PASS,env_buf,strlen(env_buf));
+        memcpy(pass_plus + 21,/*env_buf*/Bluetooth_State.PASS,strlen(/*env_buf*/Bluetooth_State.PASS));
+        memcpy(Sys_Task.PASS, /*env_buf*/Bluetooth_State.PASS,strlen(/*env_buf*/Bluetooth_State.PASS));
         
 		strncat((char *)pass_plus,"\r",1);
-		printf("Send_Cmd_Secret PASS %s\r\n",pass_plus);
+		//printf("Send_Cmd_Secret PASS %s\r\n",pass_plus);
 
 		if(Sys_Task.ssid_cfg_flag){
 			Sys_Task.blue_cfg_flag = FALSE;
@@ -400,8 +395,9 @@ typedef enum{
 	GET_OK          = 1,
 	POST_With_Body_Error = 4,
 	Rec_Data_Error = 5,
-	Reset_WiFi,
-	Http_Req_Error,
+	Reset_WiFi = 6,
+	Http_Req_Error = 7,
+	Socket_Connect_Error = 8,
 }RECV_CHECKSTATE;
 
 unsigned char check_a(unsigned char * data_temp,unsigned int data_length,WIFI_State *wifi_State)
@@ -481,8 +477,8 @@ unsigned char Get_Connect(unsigned char * data_temp,unsigned int data_length,WIF
 					wifi_State->wifi_state.Wifi_devicestate &= ~0x0600;
 					wifi_State->wifi_state.Wifi_devicestate |= 0x0200;
 					
-					WiFi_State.Network_OK = 0;
-					WiFi_State.Login_OK = 0;
+					WiFi_State.Network_OK = FALSE;
+					WiFi_State.Login_OK = FALSE;
 
                     if(!appCtl.AppFactroyCtr) { // 首次启动或者恢复出厂不提示该报错信息
                         appCtl.AppFactroyCtr = FALSE;
@@ -494,7 +490,7 @@ unsigned char Get_Connect(unsigned char * data_temp,unsigned int data_length,WIF
 					wifi_State->wifi_state.Wifi_devicestate &= ~0x0600;
 					wifi_State->wifi_state.Wifi_devicestate |= 0x0400;  
 					
-					WiFi_State.Network_OK = 1;
+					WiFi_State.Network_OK = TRUE;
 
 					return GET_OK;
 				}
@@ -843,10 +839,11 @@ static unsigned char Wifi_ATCmdTask(unsigned char * data_temp,unsigned int * dat
 				task->CMD_SEND_CTR = WIFI_SendChar_plus;
 				
 				if(PlusTransCount > 5){
-					PlusTransCount = 0;
+					PlusTransCount = NULL;
 					task->CMD_SEND_CTR = WIFI_Idle;
 					task->wifi_TaskType = TASK_IDLE;
-					task->wifi_CmdCount = 0;
+					task->wifi_CmdCount = NULL;
+					WIFIRunModeLoop = WIFI_HardReset;
 					return 0;
 				}
 			}
@@ -859,17 +856,18 @@ static unsigned char Wifi_ATCmdTask(unsigned char * data_temp,unsigned int * dat
 					//printf("send plus timeout,send again\r\n");
 					
 					if(PlusTransCount > 5){
-						PlusTransCount = 0;
+						PlusTransCount = NULL;
 						task->CMD_SEND_CTR = WIFI_Idle;
 						task->wifi_TaskType = TASK_IDLE;
-						task->wifi_CmdCount = 0;
+						task->wifi_CmdCount = NULL;
+						WIFIRunModeLoop = WIFI_HardReset;
 						return 0;
 					}	
 				}		
 			}
 			break;
 		case WIFI_SendChar_a:
-			PlusTransCount = 0;
+			PlusTransCount = NULL;
 			a_ResponseCount ++;
 			OSTmrStop(&tmr1,OS_OPT_TMR_NONE,0,&err);
 			Send_Char_a(data_temp,data_length,&task->wifi_hflpb100);
@@ -892,10 +890,10 @@ static unsigned char Wifi_ATCmdTask(unsigned char * data_temp,unsigned int * dat
 				
 				if(a_ResponseCount > 5)
 				{
-					a_ResponseCount = 0;
+					a_ResponseCount = NULL;
 					task->CMD_SEND_CTR = WIFI_Idle;
 					task->wifi_TaskType = TASK_IDLE;
-					task->wifi_CmdCount = 0;					
+					task->wifi_CmdCount = NULL;					
 					return 0;
 				}   
 			}
@@ -1042,7 +1040,7 @@ static unsigned char  Device_toAzureTask(unsigned char *data_temp,unsigned int *
 				OSTmrStop(&tmr2,OS_OPT_TMR_NONE,0,&err); 
 				AzureState.state = toAzureIdle;
 				WiFi_State.PostTimes = NULL;
-                WiFi_State.Tmr5_Ctl = TRUE;
+				WiFi_State.Tmr5_Ctl = TRUE;
 				
 				task->CMD[AzureTransCount].Decode(data_temp,0,&task->wifi_hflpb100);
 				
@@ -1091,12 +1089,13 @@ static unsigned char  Device_toAzureTask(unsigned char *data_temp,unsigned int *
 				task->wifi_TaskType = TASK_IDLE;
 				task->wifi_CmdCount = FALSE;	
 				AzureTransCount = FALSE;
+				printf("[Rec_Data_CheckError]...\r\n");
 			}
 			else if(response_state == Rec_Data_Error){
 				if(!task->Response_TimeOut_POST){
 					task->Response_TimeOut_POST = TRUE;
 					task->wifi_TaskType = FALSE;
-					WIFIRunModeLoop = 5;        // hard reset wifi module
+					WIFIRunModeLoop = WIFI_HardReset;        // hard reset wifi module
 					AzureState.state = toAzureIdle;
                     WiFi_State.RecTimeOut = TRUE;
 					printf("[Rec_Data_Error]tmr2 timeout,hard reset wifi!\r\n");
@@ -1110,19 +1109,39 @@ static unsigned char  Device_toAzureTask(unsigned char *data_temp,unsigned int *
 				AzureState.state = toAzureIdle;
                 
 				WiFi_State.PostTimes++;
-				
+				printf("PostTimes %d\r\n",WiFi_State.PostTimes);
 				if(WiFi_State.PostTimes > 3){
 					WiFi_State.PostTimes = NULL;
-					WIFIRunModeLoop = 5; // hard reset wifi module	
+					WIFIRunModeLoop = WIFI_HardReset; // hard reset wifi module	
 					WiFi_State.RecTimeOut = TRUE;
 					printf("[Http_Req_Error]tmr2 timeout,hard reset wifi!\r\n");
 					return NULL;
 				}
-				else{
+				else
+				{
+					printf("Http_Req_Error %s\r\n",Rx_Buffer);
 					return Http_Req_Error;
 				}
 			}
-			else{
+			else if(response_state == Socket_Connect_Error){
+				AzureState.state = toAzureIdle;
+                
+				//WiFi_State.PostTimes++;
+				
+				//if(WiFi_State.PostTimes > 3){
+					WiFi_State.PostTimes = NULL;
+					WIFIRunModeLoop = WIFI_HardReset; // hard reset wifi module	
+					WiFi_State.RecTimeOut = TRUE;
+					printf("[Socket_Connect_Error]hard reset wifi,reconnect!\r\n");
+					return NULL;
+				//}
+				//else
+				//{
+				//	return Http_Req_Error;
+				//}
+			}
+			else
+			{
 				if(!task->Response_TimeOut_POST){
 					AzureState.state = toAzureIdle;
                     WiFi_State.RecTimeOut = TRUE;
@@ -1179,14 +1198,13 @@ void cjson_content_clip(STRING_ *StringIn)
 			strncpy(StringIn->s + offset,StringIn->s + offset + 1,strlen(StringIn->s));
 		}
 	}
-
 }
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 extern BUFFER_HANDLE_ Base64_Decoder(const char* source);
 extern STRING_HANDLE_ Base64_Encoder(BUFFER_HANDLE_ input);
-Login_Body_Req POST_Login = { NULL,NULL,NULL };
+Login_Body_Req POST_Login = { NULL,NULL,NULL,NULL};
 
 static int hmac_sha256_base64(const char *devicekey,const char *sig_string,char *base64_output)
 {
@@ -1223,7 +1241,7 @@ static int hmac_sha256_base64(const char *devicekey,const char *sig_string,char 
 	  memcpy(base64_output, result->s, strlen(result->s));
 
 	  if(strlen(base64_output) != 44){
-		printf("\r\nbase64 error:%s\r\n",base64_output);
+		//printf("\r\nbase64 error:%s\r\n",base64_output);
 		memcpy(base64_output, "A6ojVp24OspcCoghf+pPE0O6gKL1DgyvG5mI+PY5c3g=", strlen("A6ojVp24OspcCoghf+pPE0O6gKL1DgyvG5mI+PY5c3g="));
 	  }
 
@@ -1258,9 +1276,9 @@ int8_t RNG_base64_encoder(uint8_t *Base64String,uint8_t *raw)
     memset(rng_result,NULL,sizeof(STRING_));
     
     sprintf((char *)rng_input_encode->buffer,"%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",random_0 >> 24,random_0 >> 16,random_0 >> 8,random_0,
-                                                                        random_1 >> 24,random_1 >> 16,random_1 >> 8,random_1,
-                                                                        random_2 >> 24,random_2 >> 16,random_2 >> 8,random_2,
-                                                                        random_3 >> 24,random_3 >> 16,random_3 >> 8,random_3);
+                                                                        		random_1 >> 24,random_1 >> 16,random_1 >> 8,random_1,
+                                                                        		random_2 >> 24,random_2 >> 16,random_2 >> 8,random_2,
+                                                                        		random_3 >> 24,random_3 >> 16,random_3 >> 8,random_3);
 																
 	rng_input_encode->size = strlen((const char *)rng_input_encode->buffer);
 
@@ -1274,12 +1292,12 @@ int8_t RNG_base64_encoder(uint8_t *Base64String,uint8_t *raw)
     return NULL;
 }
 
-
 extern SENSOR_DATA  sensor_cali_data;
 extern MEASURE_DATE gMyData;
 
 static int  POST_With_Body_Send(unsigned char *sendbuf, unsigned int *sendbuf_len, WIFI_State *wifi_State)
 {
+	OS_ERR err;
 	static STRING_ StrConv;
 	char temp_buf[8] = { 0 };
 	unsigned char alartmode = 0;
@@ -1318,7 +1336,8 @@ static int  POST_With_Body_Send(unsigned char *sendbuf, unsigned int *sendbuf_le
 		timestamp = atoi((const char *)&sas_raw_string[0] + offset + 1);
 		sprintf(&tim_temp[0],"%d",(timestamp + 60)); 
 	}
-	else{
+	else
+	{
 		sprintf(&tim_temp[0],"%d",wifi_State->expiry_time); 
 	}
 
@@ -1349,13 +1368,13 @@ static int  POST_With_Body_Send(unsigned char *sendbuf, unsigned int *sendbuf_le
 
 	// 更新PostReqContentLength长度
 	sprintf((char *)PostReqContentLength, "Content-Length: %d\r\n", strlen(StrConv.s));
-	// SAS更新timestample和MAC
-	memcpy(sas_raw_string + strlen((const char *)&sas_raw_string[0]) - 10,tim_temp,strlen(&tim_temp[0]));
-	memcpy(sas_raw_string + 51, wifi_State->wifi_state.Wifi_mac,strlen((const char *)wifi_State->wifi_state.Wifi_mac));
+	// SAS更新timestample
+	memcpy(sas_raw_string + strlen((const char *)sas_raw_string) - 10,tim_temp,strlen(&tim_temp[0]));
+	// SAS更新MAC
+	memcpy(sas_raw_string + SAS_RAW_OFFSET, wifi_State->wifi_state.Wifi_mac,strlen((const char *)wifi_State->wifi_state.Wifi_mac));
 	// 更新devicekey
-	WIFITaskPend ();
 	memcpy(devicekey,POST_Login.primaryKey,strlen(POST_Login.primaryKey));
-	WIFITaskPost();
+	//printf("%s\r\n",POST_Login.primaryKey);
 
 	hmac_sha256_base64(devicekey, (const char *)sas_raw_string, (char *)sign_base64);
 	
@@ -1411,8 +1430,10 @@ static int  POST_With_Body_Send(unsigned char *sendbuf, unsigned int *sendbuf_le
 
 	wifi_State->wifi_state.Wifi_devicestate |= 0x0010;
 
-    //printf("POST With body ----------------------------\r\n");
-
+	//tm2 接收超时控制
+	OSTmrStop(&tmr2,OS_OPT_TMR_NONE,0,&err);
+	OSTmrStart(&tmr2,&err);
+	
 	return *sendbuf_len = strlen((const char *)sendbuf);
 }
 
@@ -1478,17 +1499,21 @@ unsigned char POST_With_Body_Parse(unsigned char *data_temp, unsigned int data_l
 	int offset = 0;
 	unsigned char resp_buff[64] = { 0 };
 
-	if((data_length <= 1)&&(data_temp[0] == 0))
+	if((data_length <= 1)&&(data_temp[0] == 0)){
 		return Rec_Data_Error;
+	}
 
-	if(data_length > 3)
-	{
-		//printf("\r\n%s\r\n",data_temp);
-		
-        if((offset = GetSubStrPos((char *)data_temp,"Date:")) >= NULL)
+	if(data_length > 3){
+        if((offset = GetSubStrPos((char *)data_temp,"Date:")) >= NULL){
 		    memcpy(resp_buff,data_temp,sizeof(resp_buff));
-        else
-            return Http_Req_Error;
+        }
+        else if((offset = GetSubStrPos((char *)data_temp,"[tcp connect]")) >= NULL)
+        {
+            //printf("socket connect error: %s\r\n",data_temp);
+            return Socket_Connect_Error;
+        }
+		else
+			return Http_Req_Error;
 		
 		if((GetSubStrPos((char *)resp_buff,"401")) >= 0)
 		{
@@ -1538,6 +1563,7 @@ unsigned char POST_With_Body_Parse(unsigned char *data_temp, unsigned int data_l
 
 static int  POST_Login_Send(unsigned char *sendbuf, unsigned int *sendbuf_len, WIFI_State *wifi_State)
 {
+	OS_ERR err;
 	static STRING_ StrConv;
 	int offset = 0;
 	char DeviceId[32] = { 0 };
@@ -1569,16 +1595,27 @@ static int  POST_Login_Send(unsigned char *sendbuf, unsigned int *sendbuf_len, W
     // 更新PostReqAuthorization中的MAC
 	memcpy(PostReqAuthorization + 34, wifi_State->wifi_state.Wifi_mac,strlen((const char *)wifi_State->wifi_state.Wifi_mac));
 	// 更新 timestample / nonce
-	memset(Nonce,NULL,sizeof(Nonce));
-    RNG_base64_encoder(Nonce,Nonce_raw); 
-    sprintf(TimeStampBuf,"%04d%02d%02dT%02d%02d%02d",wifi_State->gmt_time.tm_year,
-												     wifi_State->gmt_time.tm_mon,
-												     wifi_State->gmt_time.tm_mday,
-												     wifi_State->gmt_time.tm_hour + 8,
-												     wifi_State->gmt_time.tm_min,
-												     wifi_State->gmt_time.tm_sec);
+	if(wifi_State->gmt_time.tm_year == NULL){
+		memmove(TimeStampBuf,"20181228T002121",strlen("20181228T002121"));
+	}
+	else
+	{
+    	sprintf(TimeStampBuf,"%04d%02d%02dT%02d%02d%02d",wifi_State->gmt_time.tm_year,
+												     	 wifi_State->gmt_time.tm_mon,
+												     	 wifi_State->gmt_time.tm_mday,
+												     	 #if CHINA
+												     	 wifi_State->gmt_time.tm_hour + 8,
+												     	 #else
+														 wifi_State->gmt_time.tm_hour,//+1 just for testing
+												     	 #endif
+												     	 wifi_State->gmt_time.tm_min,
+												     	 wifi_State->gmt_time.tm_sec);
+	}
 	// 更新PostReqAuthorization timestample
     memcpy(PostReqAuthorization + 52,TimeStampBuf,strlen(TimeStampBuf));
+	
+	memset(Nonce,NULL,sizeof(Nonce));
+    RNG_base64_encoder(Nonce,Nonce_raw); 
 	// 更新PostReqAuthorization Nonce
     memcpy(PostReqAuthorization + 68,Nonce,strlen((char *)Nonce));
     // 更新ProvisionningKey timestample
@@ -1600,17 +1637,16 @@ static int  POST_Login_Send(unsigned char *sendbuf, unsigned int *sendbuf_len, W
 	memset(ProvisionningKey + 19 + strlen(TimeStampBuf) + strlen((char *)Nonce_raw),NULL,sizeof(ProvisionningKey) - 19 - strlen(TimeStampBuf) - strlen((char *)Nonce_raw));
 	memcpy(ProvisionningKey + strlen((const char *)ProvisionningKey),"\004POST\031/api/v1/devices/AddDevice",strlen("\004POST\031/api/v1/devices/AddDevice"));
 	memcpy(ProvisionningKey + strlen((const char *)ProvisionningKey),StrConv.s,strlen(StrConv.s));// 添加Contents
-	
-	printf("\r\n%s\r\n",ProvisionningKey);
+	//printf("\r\n%s\r\n",ProvisionningKey);
 	
 	// sha256 to base 64
 	hmac_sha256_base64((const char *)ClientKey, (const char *)ProvisionningKey, (char *)sign_base64);
-
 	printf("\r\n%s\r\n",sign_base64);
 	
-    // 更新密钥
+    // 更新NONCE
     memset(PostReqAuthorization + 68 + strlen((char *)Nonce),NULL,sizeof(PostReqAuthorization) - 68 - strlen((char *)Nonce));
 	memcpy(PostReqAuthorization + strlen((const char *)PostReqAuthorization)," ",1); // 添加空格
+	// 更新密钥
 	memcpy(PostReqAuthorization + strlen((const char *)PostReqAuthorization),sign_base64,44); // 添加密钥
 	memcpy(PostReqAuthorization + strlen((const char *)PostReqAuthorization),"\r\n",2); // 添加\r\n
     // 更新PostReqContentLength长度
@@ -1631,8 +1667,10 @@ static int  POST_Login_Send(unsigned char *sendbuf, unsigned int *sendbuf_len, W
 
 	wifi_State->wifi_state.Wifi_devicestate |= 0x0004;
 
-    //printf("POST provisionning ----------------------------\r\n");
-
+	//tm2 接收超时控制
+	OSTmrStop(&tmr2,OS_OPT_TMR_NONE,0,&err);
+	OSTmrStart(&tmr2,&err);
+	
 	return *sendbuf_len = strlen((const char *)sendbuf);
 }
 
@@ -1648,12 +1686,16 @@ unsigned char POST_Login_Parse(unsigned char *data_temp, unsigned int data_lengt
 	}
 
 	if(data_length > 3){
-		//printf("\r\n%s\r\n",data_temp);
-		
-        if((offset = GetSubStrPos((char *)data_temp,"Date:")) >= NULL)
+        if((offset = GetSubStrPos((char *)data_temp,"Date:")) >= NULL){
 		    memcpy(resp_buff,data_temp,sizeof(resp_buff));
-        else
-            return Http_Req_Error;
+        }
+        else if((offset = GetSubStrPos((char *)data_temp,"[tcp connect]")) >= NULL)
+        {
+            //printf("socket connect error: %s\r\n",data_temp);
+            return Socket_Connect_Error;
+        }
+		else
+			return Http_Req_Error;
 
 		if((GetSubStrPos((char *)resp_buff,"401")) >=0){
 			Bluetooth_State.wifi_connect_status = ble_wifi_connect_error_401;
@@ -1687,6 +1729,13 @@ unsigned char POST_Login_Parse(unsigned char *data_temp, unsigned int data_lengt
 			WiFi_State.Login_OK = 0;
 			return Http_Req_Error;
 		}
+		else if((GetSubStrPos((char *)resp_buff,"502")) >= 0){
+			Bluetooth_State.wifi_connect_status = ble_wifi_connect_error_500;
+			Timstample_Parse(data_temp,offset,wifi_State);
+			tty_7.clr();
+			WiFi_State.Login_OK = 0;
+			return Http_Req_Error;
+		}
 		else if((GetSubStrPos((char *)resp_buff,"200")) >= 0 || (GetSubStrPos((char *)resp_buff,"201")) >= 0){
 			WiFi_State.Login_OK = 1;
 			Bluetooth_State.wifi_connect_status = ble_wifi_connect_success;
@@ -1694,11 +1743,9 @@ unsigned char POST_Login_Parse(unsigned char *data_temp, unsigned int data_lengt
 			Timstample_Parse(data_temp,offset,wifi_State);
             
             #if WIFI_FW_CTR == 1
-            https_resp_process(data_temp);
+            https_recv_process(data_temp);
 			#endif
 			offset = GetSubStrPos((char *)data_temp,"primaryKey");
-
-			//WIFITaskPend();
 			if(offset >= NULL) {
                 memset(POST_Login.primaryKey,NULL,sizeof(POST_Login.primaryKey));
 			    memmove(POST_Login.primaryKey,data_temp + offset + 13,24);
@@ -1709,9 +1756,19 @@ unsigned char POST_Login_Parse(unsigned char *data_temp, unsigned int data_lengt
 			}
             else
                 return Http_Req_Error;
-			//cJSON_to_str(data_temp + offset + 7,"primaryKey",POST_Login.primaryKey);
+
+			offset = GetSubStrPos((char *)data_temp,"secondaryKey");
+			if(offset >= NULL) {
+                memset(POST_Login.secondKey,NULL,sizeof(POST_Login.secondKey));
+			    memmove(POST_Login.secondKey,data_temp + offset + 15,24);
+                
+                ef_set_and_save_env(secondaryKey,(const char *)POST_Login.secondKey);  // 保存 secondaryKey
+
+                appCtl.AppSettingCtr = FALSE; // 关闭 Provisionning
+			}
+            else
+                return Http_Req_Error;
 			//Uart_CommState = 0;
-			//WIFITaskPost();
 	
 			tty_7.clr();
 			return RECV_CHECKOK;
@@ -1728,6 +1785,7 @@ unsigned char POST_Login_Parse(unsigned char *data_temp, unsigned int data_lengt
 
 static int  GET_Data_Send(unsigned char *sendbuf, unsigned int *sendbuf_len, WIFI_State *wifi_State)
 {
+	OS_ERR err;
 	int offset = 0;
 	unsigned char sign_base64[45] = { 0 };
     char TimeStampBuf[16] = { 0 };
@@ -1737,38 +1795,49 @@ static int  GET_Data_Send(unsigned char *sendbuf, unsigned int *sendbuf_len, WIF
 	#else
 	const unsigned char PostReqHost[] = "Host: aldesiotsuite-aldesprovisionning.azurewebsites.net\r\n";
 	#endif
-	const unsigned char ClientKey[] = {"ngPjOnSx9VsNMTQF1z1g64CkduX/qBcNnKPGaWqR8naO8t1cHnngqHElLYWBwaOPNxwLvYeJdGnDUfWFI6lRXQ=="};
-	unsigned char ProvisionningKey[] = {"\021F0FE6B89C82C_OQAI\01720180316T113321\x25\xcd\xc6\xa5\x99\x62\x4a\xfc\xfd\x05\x73\x81\x1c\xa5\xeb\x7b\004POST\031/api/v1/devices/AddDevice{\"DeviceId\":\"F0FE6B89C82C_OQAI\",\"DeviceType\":\"OQAI\"}"};
+	//const unsigned char ClientKey[] = {"ngPjOnSx9VsNMTQF1z1g64CkduX/qBcNnKPGaWqR8naO8t1cHnngqHElLYWBwaOPNxwLvYeJdGnDUfWFI6lRXQ=="};
+	unsigned char GetKey[] = {"\021F0FE6B89C82C_OQAI\01720180316T113321\x25\xcd\xc6\xa5\x99\x62\x4a\xfc\xfd\x05\x73\x81\x1c\xa5\xeb\x7b\003GET\025/api/v1/devices/Infos"};
+	//unsigned char GetKey[] = {"\021F0FE6B89C82C_OQAI\01720180316T113321MDAwODAwMDUwMDAzMDAwOA==\003GET\025/api/v1/devices/Infos"};
 	unsigned char Nonce[] = {"Jc3GpZliSvz9BXOBHKXrew=="};
-	unsigned char PostReqAuthorization[200] = {"Authorization: ApiAuth-v2-Hmac256 F0FE6BBBA1C6_OQAI 20180316T113321 Jc3GpZliSvz9BXOBHKXrew== OQasnQYdjdE99J1tBG+9p0K5wz2BMDtYoKXlZeIy3Cs=\r\n"};
+	unsigned char Nonce_raw[] = {"0007000600060002"};
+	unsigned char PostReqAuthorization[200] = {"Authorization: ApiAuth-v1-Hmac256 F0FE6BBBA1C6_OQAI 20180316T113321 Jc3GpZliSvz9BXOBHKXrew== OQasnQYdjdE99J1tBG+9p0K5wz2BMDtYoKXlZeIy3Cs=\r\n"};
 	const unsigned char PostReqContentType[] = "Content-Type: application/json\r\n";
 	const unsigned char PostReqUserAgent[] = "User-Agent: Aldes-Modem/1.0\r\n";
 	const unsigned char PostReqConnection[] = "Connection: keep-alive\r\n";
 	const unsigned char PostReqBlankRow[] = "\r\n";
+	char devicekey[] = "XMfsmaI3ouqbMj8D4xwUPg=="; // 注册时返回的密钥，可选 primaryKey 和 secondaryKey
 
-	// 更新ProvisionningKey MAC
-	memcpy(ProvisionningKey + 1, wifi_State->wifi_state.Wifi_mac,strlen((const char *)wifi_State->wifi_state.Wifi_mac));
-	offset = GetSubStrPos((char *)ProvisionningKey,"DeviceId");
-	memcpy(ProvisionningKey + offset + 11, wifi_State->wifi_state.Wifi_mac,strlen((const char *)wifi_State->wifi_state.Wifi_mac));
-	
+	// 更新GetKey MAC
+	memcpy(GetKey + 1, wifi_State->wifi_state.Wifi_mac,strlen((const char *)wifi_State->wifi_state.Wifi_mac));
+	//offset = GetSubStrPos((char *)GetKey,"DeviceId");
+	//memcpy(GetKey + offset + 11, wifi_State->wifi_state.Wifi_mac,strlen((const char *)wifi_State->wifi_state.Wifi_mac));
 	// 更新PostReqAuthorization中的MAC
 	memcpy(PostReqAuthorization + 34, wifi_State->wifi_state.Wifi_mac,strlen((const char *)wifi_State->wifi_state.Wifi_mac));
-
 	// 更新 timestample / nonce /
-	if(RNG_base64_encoder(Nonce,NULL) == NULL)
-        //printf("GET Nonce=%s --------\r\n",Nonce);
+	RNG_base64_encoder(Nonce,Nonce_raw);
 
-    sprintf(TimeStampBuf,"%04d%02d%02dT%02d%02d%02d",   wifi_State->gmt_time.tm_year,
-												        wifi_State->gmt_time.tm_mon,
-												        wifi_State->gmt_time.tm_mday,
-												        wifi_State->gmt_time.tm_hour + 8,
-												        wifi_State->gmt_time.tm_min,
-												        wifi_State->gmt_time.tm_sec);
+    sprintf(TimeStampBuf,"%04d%02d%02dT%02d%02d%02d", wifi_State->gmt_time.tm_year,
+												      wifi_State->gmt_time.tm_mon,
+												      wifi_State->gmt_time.tm_mday,
+												      #if CHINA
+												      wifi_State->gmt_time.tm_hour + 8,
+												      #else
+													  wifi_State->gmt_time.tm_hour,
+												      #endif
+												      wifi_State->gmt_time.tm_min,
+												      wifi_State->gmt_time.tm_sec);
 	memcpy(PostReqAuthorization + 52,TimeStampBuf,15);
     memcpy(PostReqAuthorization + 68,Nonce,24);
-    
+
+	// 更新GetKey timestample
+    memcpy(GetKey + 19, TimeStampBuf,strlen(TimeStampBuf));
+	// 更新GetKey Nonce
+	memcpy(GetKey + 34, Nonce_raw,strlen((char *)Nonce_raw));
+	//memcpy(GetKey + 34, Nonce,strlen((char *)Nonce));
+	//printf("%s\r\n",GetKey);
+	memcpy(devicekey,POST_Login.primaryKey,strlen(POST_Login.primaryKey));
 	// sha256 to base 64
-	hmac_sha256_base64((const char *)ClientKey, (const char *)ProvisionningKey, (char *)sign_base64);
+	hmac_sha256_base64((const char *)devicekey, (const char *)GetKey, (char *)sign_base64);
 	
 	// 更新Signature
 	memcpy(PostReqAuthorization + strlen((const char *)PostReqAuthorization) - 46, sign_base64,44);
@@ -1784,14 +1853,15 @@ static int  GET_Data_Send(unsigned char *sendbuf, unsigned int *sendbuf_len, WIF
 	strncat((char *)sendbuf, (const char *)PostReqBlankRow, strlen((const char *)PostReqBlankRow));
 
 	wifi_State->wifi_state.Wifi_devicestate |= 0x0008;
-
-    //printf("GET body ----------------------------\r\n");
-
+	
+	//tm2 接收超时控制
+	OSTmrStop(&tmr2,OS_OPT_TMR_NONE,0,&err);
+	OSTmrStart(&tmr2,&err);
+	
 	return *sendbuf_len = strlen((const char *)sendbuf);
 }
 
-
-#if 1
+#if 0
 static uint8_t data_buffer[] = 
 #if 0
 "HTTP/1.1 200 OK\r\n"\
@@ -1868,18 +1938,20 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -1;
     
     // 335 is just cjson start
-    if((offset = GetSubStrPos(cloud_temp + 335,"productId")) > NULL && (offset_n = GetSubStrPos(cloud_temp + 335,"isAutomaticEnable")) > NULL){
-        memmove(buf_temp,cloud_temp + 335 + offset + 11,offset_n - 2 - offset - 11);
+    if((offset = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"productId")) > NULL && (offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"isAutomaticEnable")) > NULL){
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 11,offset_n - 2 - offset - 11);
         cloud_data->productId = atoi((char *)buf_temp); // 产品ID
     }
     else
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"automaticTime")) > NULL) {
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"automaticTime")) > NULL) {
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 19,offset_n - 2 - offset - 19);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 19,offset_n - 2 - offset - 19);
 
+		cloud_data->isAutoEnCtl = TRUE;
+		
         if(strncmp (buf_temp,"true",4) == NULL) // 自动运行控制
            cloud_data->isAutoEn = TRUE;
         else{
@@ -1890,9 +1962,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"automaticFromDate")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"automaticFromDate")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 15,offset_n - 2 - offset - 15);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 15,offset_n - 2 - offset - 15);
         cloud_data->autoTim = atoi((char *)buf_temp);    // 自动运行时间间隔(0 1 2)
     }
     else
@@ -1900,26 +1972,26 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     
         
    offset = offset_n;
-   if((offset_n = GetSubStrPos(cloud_temp + 335,"automaticToDate")) > NULL){ // 自动运行开始时间
+   if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"automaticToDate")) > NULL){ // 自动运行开始时间
         memset(cloud_data->autoFromDate,NULL,sizeof(cloud_data->autoFromDate));
-        memmove(cloud_data->autoFromDate,cloud_temp + 335 + offset + 20,offset_n - 2 - offset - 21);
+        memmove(cloud_data->autoFromDate,cloud_temp + HTTP_RESPONSE_HEADER + offset + 20,offset_n - 2 - offset - 21);
     }
     else
         return -2;
 
    offset = offset_n;
-   if((offset_n = GetSubStrPos(cloud_temp + 335,"alertMode")) > NULL){ // 自动运行结束时间
+   if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"alertMode")) > NULL){ // 自动运行结束时间
         memset(cloud_data->autoToDate,NULL,sizeof(cloud_data->autoToDate));
-        memmove(cloud_data->autoToDate,cloud_temp + 335 + offset + 18,offset_n - 2 - offset - 19);
+        memmove(cloud_data->autoToDate,cloud_temp + HTTP_RESPONSE_HEADER + offset + 18,offset_n - 2 - offset - 19);
    		cloud_data->autoModeCtl = TRUE;
     }
     else
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"displayType")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"displayType")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 11,offset_n - 2 - offset - 11);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 11,offset_n - 2 - offset - 11);
 
         if(strncmp (buf_temp,"true",4) == NULL) // 警报模式
            cloud_data->mode_sys = TRUE;
@@ -1930,9 +2002,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"favoriteDisplay")) > NULL){  // 运行模式选择(0、1、2)
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"favoriteDisplay")) > NULL){  // 运行模式选择(0、1、2)
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 13,offset_n - 2 - offset - 13);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 13,offset_n - 2 - offset - 13);
         cloud_data->dispScreen = atoi((char *)buf_temp);
 
         cloud.dispScreenCntl = TRUE; // 运行模式选择控制
@@ -1941,9 +2013,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"luminosity")) > NULL){  
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"luminosity")) > NULL){  
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 17,offset_n - 2 - offset - 17); // 常用模式选择(0、1、2、3)
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 17,offset_n - 2 - offset - 17); // 常用模式选择(0、1、2、3)
         cloud_data->favor = atoi((char *)buf_temp);
 
         cloud.favorCntl = TRUE; // 常用模式选择控制
@@ -1952,9 +2024,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"cloudFrequency")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"cloudFrequency")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 12,offset_n - 2 - offset - 12); // 亮度选择
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 12,offset_n - 2 - offset - 12); // 亮度选择
 
         cloud_data->lumi = atoi((char *)buf_temp);
        
@@ -1964,9 +2036,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"iaq")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"iaq")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 12,offset_n - 2 - offset - 12); // WIFI、云端交互时间间隔
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 12,offset_n - 2 - offset - 12); // WIFI、云端交互时间间隔
 
         if(strncmp (buf_temp,"null",4) == NULL)
            cloud_data->cloudFre = 0;
@@ -1978,22 +2050,23 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"eaq")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"eaq")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 5,offset_n - 2 - offset - 5);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 5,offset_n - 2 - offset - 5);
 
         if(strncmp (buf_temp,"null",4) == NULL)
             cloud_data->iaq = 0x7F;
         else
             cloud_data->iaq = atoi((char *)buf_temp);
+            //cloud_data->iaq = 26;//------------------------test--------------------
     }
     else
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm25Eaq")) > NULL) {
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm25Eaq")) > NULL) {
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 5,offset_n - 2 - offset - 5);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 5,offset_n - 2 - offset - 5);
         
         if(strncmp (buf_temp,"null",4) == NULL)
             cloud_data->eaq = 0x7F;
@@ -2004,9 +2077,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm10")) > NULL) {
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm10")) > NULL) {
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 9,offset_n - 2 - offset - 9);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 9,offset_n - 2 - offset - 9);
 
         if(strncmp (buf_temp,"null",4) == NULL)
            cloud_data->pm25 = 0x7FFF;
@@ -2017,9 +2090,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"no2")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"no2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 6,offset_n - 2 - offset - 6);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 6,offset_n - 2 - offset - 6);
 
         if(strncmp (buf_temp,"null",4) == NULL)
            cloud_data->pm10 = 0x7FFF;
@@ -2031,9 +2104,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"o3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"o3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 5,offset_n - 2 - offset - 5);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 5,offset_n - 2 - offset - 5);
 
         if(strncmp (buf_temp,"null",4) == NULL)
            cloud_data->no2 = 0x7FFF;
@@ -2044,9 +2117,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm25L1")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm25L1")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 4,offset_n - 2 - offset - 4);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 4,offset_n - 2 - offset - 4);
 
         if(strncmp (buf_temp,"null",4) == NULL)
             cloud_data->o3 = 0x7FFF;
@@ -2057,9 +2130,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm25L2")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm25L2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2068,14 +2141,14 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         }
     }
     else {
-        cloud_data->pm25IaqL1 = 26;
+        cloud_data->pm25IaqL1 = 16;
         return -2;
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm25L3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm25L3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2084,14 +2157,14 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         }
     }
     else {
-        cloud_data->pm25IaqL2 = 53;
+        cloud_data->pm25IaqL2 = 31;
         return -2;
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm25Max")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm25Max")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2100,14 +2173,14 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         }
     }
     else {
-        cloud_data->pm25IaqL3 = 101;
+        cloud_data->pm25IaqL3 = 51;
         return -2;
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"vocL1")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"vocL1")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 9,offset_n - 2 - offset - 9);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 9,offset_n - 2 - offset - 9);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2121,9 +2194,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"vocL2")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"vocL2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2137,9 +2210,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"vocL3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"vocL3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2153,9 +2226,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"vocMax")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"vocMax")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2169,9 +2242,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"co2L1")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"co2L1")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2185,9 +2258,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"co2L2")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"co2L2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2201,9 +2274,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"co2L3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"co2L3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2217,9 +2290,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"co2Max")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"co2Max")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2233,9 +2306,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"h2OL1")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"h2OL1")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2249,9 +2322,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"h2OL2")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"h2OL2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
 
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL){
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2272,9 +2345,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"h2OL3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"h2OL3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
 
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL){
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2296,9 +2369,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
 
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"h2OMax")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"h2OMax")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
 
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL){
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2319,9 +2392,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         return -2;
     }
     
-   if((offset = GetSubStrPos(cloud_temp + 335,"pm25EaqL1")) > NULL && (offset_n = GetSubStrPos(cloud_temp + 335,"pm25EaqL2")) > NULL){
+   if((offset = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm25EaqL1")) > NULL && (offset_n = GetSubStrPos(cloud_temp + 335,"pm25EaqL2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 11,offset_n - 2 - offset - 11);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 11,offset_n - 2 - offset - 11);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2330,14 +2403,14 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         }
     }
     else {
-        cloud_data->pm25EaqL1 = 26;
+        cloud_data->pm25EaqL1 = 16;
         return -2;
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm25EaqL3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm25EaqL3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));        
-        memmove(buf_temp,cloud_temp + 335 + offset + 11,offset_n - 2 - offset - 11);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 11,offset_n - 2 - offset - 11);
         
             if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
                 memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2347,14 +2420,14 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
             }
     }
     else {
-        cloud_data->pm25EaqL2 = 53;
+        cloud_data->pm25EaqL2 = 31;
         return -2;
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm25EaqMax")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm25EaqMax")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 11,offset_n - 2 - offset - 11);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 11,offset_n - 2 - offset - 11);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2364,14 +2437,14 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
         }
     }
     else {
-        cloud_data->pm25EaqL3 = 101;
+        cloud_data->pm25EaqL3 = 51;
         return -2;
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm10L1")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm10L1")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 12,offset_n - 2 - offset - 12);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 12,offset_n - 2 - offset - 12);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2385,9 +2458,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm10L2")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm10L2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2401,9 +2474,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm10L3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm10L3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2417,9 +2490,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"pm10Max")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"pm10Max")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2433,9 +2506,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"nO2L1")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"nO2L1")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 9,offset_n - 2 - offset - 9);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 9,offset_n - 2 - offset - 9);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2449,9 +2522,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"nO2L2")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"nO2L2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2465,9 +2538,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"nO2L3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"nO2L3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2481,9 +2554,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"nO2Max")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"nO2Max")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 2 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 2 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2497,9 +2570,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"o3L1")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"o3L1")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 8,offset_n - 2 - offset - 8);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 8,offset_n - 2 - offset - 8);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2513,9 +2586,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"o3L2")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"o3L2")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 6,offset_n - 2 - offset - 6);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 6,offset_n - 2 - offset - 6);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2529,9 +2602,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"o3L3")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"o3L3")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 6,offset_n - 2 - offset - 6);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 6,offset_n - 2 - offset - 6);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2545,9 +2618,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"o3Max")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"o3Max")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 6,offset_n - 2 - offset - 6);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 6,offset_n - 2 - offset - 6);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2561,9 +2634,9 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
     offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"language")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"language")) > NULL){
         memset(buf_temp,NULL,sizeof(buf_temp));
-        memmove(buf_temp,cloud_temp + 335 + offset + 7,offset_n - 1 - offset - 7);
+        memmove(buf_temp,cloud_temp + HTTP_RESPONSE_HEADER + offset + 7,offset_n - 1 - offset - 7);
         
         if((offset_s = GetSubStrPos(buf_temp,",")) > NULL && (offset_e = GetSubStrPos(buf_temp,"]")) > NULL) {
             memset(bufSensorbuf,NULL,sizeof(bufSensorbuf));
@@ -2577,11 +2650,12 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
     }
 
 	offset = offset_n;
-    if((offset_n = GetSubStrPos(cloud_temp + 335,"}")) > NULL){
+    if((offset_n = GetSubStrPos(cloud_temp + HTTP_RESPONSE_HEADER,"}")) > NULL){
 		if((offset_n - 1 - offset - 10) < 8)
-        	memmove(cloud_data->lagu,cloud_temp + 335 + offset + 11,offset_n - 1 - offset - 11);
+        	memmove(cloud_data->lagu,cloud_temp + HTTP_RESPONSE_HEADER + offset + 11,offset_n - 1 - offset - 11);
+			//memmove(cloud_data->lagu,"es",3);//---------------------test--------------
 		else
-			memmove(cloud_data->lagu,"en",3); 
+			memmove(cloud_data->lagu,"en",3);
 
 		cloud.laguCtl = TRUE; // 语言包变化控制
     }
@@ -2600,7 +2674,6 @@ static int cloud_to_struct(char *cloud_temp, azure_cloud *cloud_data)
 
     return NULL;
 }
-
 
 static uint8_t ascii2hex(unsigned char ascii) 
 { 
@@ -2652,9 +2725,7 @@ static uint8_t ascii2hex(unsigned char ascii)
     return result;
 }
 
-
-
-static int https_resp_process(uint8_t *cloud_data_temp)
+static int https_recv_process(uint8_t *cloud_data_temp)
 {
     int offset_s, offset_e, offset_t,offset_f,offset_str,cloud_data_count, count_temp,count_total;
     uint8_t count_buf[8];
@@ -2664,23 +2735,23 @@ static int https_resp_process(uint8_t *cloud_data_temp)
 
     memset(count_buf, NULL, sizeof(count_buf));
     
-    if((offset_s = GetSubStrPos((char *)cloud_data_temp + 335,"GMT\r\n\r\n")) < NULL)
+    if((offset_s = GetSubStrPos((char *)cloud_data_temp + HTTP_RESPONSE_HEADER,"GMT\r\n\r\n")) < NULL)
         return -1;
     
-    printf("\r\n-------------https  offset_s %d---------------\r\n",offset_s);
+    printf("\r\n-------------https offset_s %d---------------\r\n",offset_s);
     
-        if((offset_e = GetSubStrPos((char *)cloud_data_temp + 335,"\r\n{")) < NULL)
+        if((offset_e = GetSubStrPos((char *)cloud_data_temp + HTTP_RESPONSE_HEADER,"\r\n{")) < NULL)
             return -1;
 
         printf("\r\n-------------https offset_e %d---------------\r\n",offset_e);
         
-            if((offset_t = GetSubStrPos((char *)cloud_data_temp + 335,"}")) >= NULL) {
+            if((offset_t = GetSubStrPos((char *)cloud_data_temp + HTTP_RESPONSE_HEADER,"}")) >= NULL) {
 
                 printf("\r\n-------------https offset_t %d---------------\r\n",offset_t);
 
                 count_total = offset_t - offset_e - 1; // 数据总长度
             
-                memcpy(count_buf, cloud_data_temp + 335 + offset_s + 7, offset_e - offset_s - 7);
+                memmove(count_buf, cloud_data_temp + HTTP_RESPONSE_HEADER + offset_s + 7, offset_e - offset_s - 7);
 
                 count_temp = CharChangetoHex((char *)count_buf,strlen((const char *)count_buf));
                 cloud_data_count = count_temp;
@@ -2697,8 +2768,8 @@ static int https_resp_process(uint8_t *cloud_data_temp)
 
                     printf("\r\n-------------https proc count_total %d %d---------------\r\n",count_total,cloud_data_count);
                   
-                    if((offset_s = GetSubStrPos((char *)cloud_data_temp + 342 + cloud_data_count + offset_str + 2,"\r\n")) >= NULL){
-                    if((offset_e = GetSubStrPos((char *)cloud_data_temp + 342 + cloud_data_count + offset_str + 4,"\r\n")) >= NULL){
+                    if((offset_s = GetSubStrPos((char *)cloud_data_temp + HTTP_RESPONSE_BODY + cloud_data_count + offset_str + 2,"\r\n")) >= NULL){
+                    if((offset_e = GetSubStrPos((char *)cloud_data_temp + HTTP_RESPONSE_BODY + cloud_data_count + offset_str + 4,"\r\n")) >= NULL){
 
                         uint16_t offset_str_l;
 
@@ -2707,7 +2778,7 @@ static int https_resp_process(uint8_t *cloud_data_temp)
                             continue;
                         }
 
-                        memcpy(count_buf, cloud_data_temp + 342 + cloud_data_count + offset_str + 4, offset_e - offset_s);
+                        memmove(count_buf, cloud_data_temp + HTTP_RESPONSE_BODY + cloud_data_count + offset_str + 4, offset_e - offset_s);
                         
                         count_temp = CharChangetoHex((char *)count_buf,strlen((const char *)count_buf));
 
@@ -2722,7 +2793,7 @@ static int https_resp_process(uint8_t *cloud_data_temp)
                         else
                             offset_str_l = 3;
                             
-                        memcpy(cloud_data_temp + 342 + cloud_data_count + offset_str + 2, cloud_data_temp + 342 + cloud_data_count + offset_str + offset_str_l + 6, count_total - cloud_data_count);
+                        memmove(cloud_data_temp + HTTP_RESPONSE_BODY + cloud_data_count + offset_str + 2, cloud_data_temp + HTTP_RESPONSE_BODY + cloud_data_count + offset_str + offset_str_l + 6, count_total - cloud_data_count);
                         
                         cloud_data_count += count_temp;
                         count_total -=  offset_str_l + 4;
@@ -2744,10 +2815,10 @@ static int https_resp_process(uint8_t *cloud_data_temp)
         return NULL;
 }
 
-
 unsigned char GET_Data_Parse(unsigned char *data_temp, unsigned int data_length, WIFI_State *wifi_State)
 {
 	int offset;
+	int offset_200,offset_201;
 	unsigned char resp_buff[64] = { 0 };
     
 	if((data_length <= 1) && (data_temp[0] == 0)){
@@ -2755,50 +2826,53 @@ unsigned char GET_Data_Parse(unsigned char *data_temp, unsigned int data_length,
 	}
 	
 	if(data_length > 3){
-        
-		//printf("\r\n%s\r\n",Rx_Buffer);
-
-		if((offset = GetSubStrPos((char *)data_temp,"Date:")) >= NULL)
+		if((offset = GetSubStrPos((char *)data_temp,"Date:")) >= NULL){
 		    memcpy(resp_buff,data_temp,sizeof(resp_buff));
-        else
-            return Http_Req_Error;
+		}
+        else if((offset = GetSubStrPos((char *)data_temp,"[tcp connect]")) >= NULL)
+        {
+            //printf("socket connect error：%s\r\n",data_temp);
+            return Socket_Connect_Error;
+        }
+		else
+			return Http_Req_Error;
 
-		if((GetSubStrPos((char *)resp_buff,"401")) >= 0){
+		if((GetSubStrPos((char *)resp_buff,"401")) >= NULL){
 			Timstample_Parse(data_temp,offset,wifi_State);
 			tty_7.clr();
 
 			return Http_Req_Error;
 		}
-		else if((GetSubStrPos((char *)resp_buff,"400")) >= 0) {
+		else if((GetSubStrPos((char *)resp_buff,"400")) >= NULL) {
 			Timstample_Parse(data_temp,offset,wifi_State);
 			tty_7.clr();
 
 			return Http_Req_Error;
 		}
-		else if((GetSubStrPos((char *)resp_buff,"404")) >= 0) {
+		else if((GetSubStrPos((char *)resp_buff,"404")) >= NULL) {
 			Timstample_Parse(data_temp,offset,wifi_State);
 			tty_7.clr();
 
 			return Http_Req_Error;
 		}
-		else if((GetSubStrPos((char *)&resp_buff[0],"403")) >= 0) {
+		else if((GetSubStrPos((char *)&resp_buff[0],"403")) >= NULL) {
 			Timstample_Parse(data_temp,offset,wifi_State);
 			tty_7.clr();
 
 			return Http_Req_Error;
 		}
-		else if((GetSubStrPos((char *)resp_buff,"500")) >= 0) {
+		else if((GetSubStrPos((char *)resp_buff,"500")) >= NULL) {
 			Timstample_Parse(data_temp,offset,wifi_State);
 			tty_7.clr();
 
 			return Http_Req_Error;
 		}
-		else if((GetSubStrPos((char *)&resp_buff[0],"200")) >= 0 || (GetSubStrPos((char *)&resp_buff,"201")) >= 0){
+		else if(( GetSubStrPos((char *)&resp_buff[0],"200")) >= NULL || (GetSubStrPos((char *)&resp_buff,"201")) >= NULL){
 			Timstample_Parse(data_temp,offset,wifi_State);
-            
+	
             #if WIFI_FW_CTR == 1
-            if((https_resp_process(data_temp)) == NULL)    
-                cloud_to_struct((char *)data_temp,&cloud);
+            if((https_recv_process(data_temp)) == NULL)
+            	cloud_to_struct((char *)data_temp,&cloud);
             else
                 return Http_Req_Error;
             #else
@@ -2814,7 +2888,6 @@ unsigned char GET_Data_Parse(unsigned char *data_temp, unsigned int data_length,
     	}
 		else{
 			tty_7.clr();
-			
 			return Http_Req_Error;
 		}
 	}
@@ -2969,6 +3042,7 @@ void Uart_TxRxTask(WIFI_TASK * task)
 	OS_ERR  err;
 	static unsigned char task_state = 0;
 	static unsigned int iReadLen = 0;
+	uint32_t recvTimeout = NULL;
 		
 	switch(task->CMD_COM_STATE_CTR)
 	{
@@ -2983,13 +3057,13 @@ void Uart_TxRxTask(WIFI_TASK * task)
 					task->wifi_taskqueue &= ~Task_GetState;
 					break;
 				case Task_GetData:
-					if(task->wifi_hflpb100.wifi_state.Wifi_devicestate) {
+					if(task->wifi_hflpb100.wifi_state.Wifi_devicestate){
 						Azure_GetData(task);
 						task->wifi_taskqueue &= ~Task_GetData;
 					}
 					break;
 				case Task_Delete:
-					if(task->wifi_hflpb100.wifi_state.Wifi_devicestate) {
+					if(task->wifi_hflpb100.wifi_state.Wifi_devicestate){
 						Azure_DeleteData(task);
 						task->wifi_taskqueue &= ~Task_Delete;
 					}
@@ -3034,7 +3108,7 @@ void Uart_TxRxTask(WIFI_TASK * task)
 		case isTransmit:
 			Rx_Length = 0;
 			Tx_Length = 0;
-			memset(Rx_Buffer, 0, 1536);   
+			memset(Rx_Buffer, 0, 2048);   
 			memset(Tx_Buffer, 0, 1024);
             
 			task->CMD_COM_STATE_CTR = isReceive;
@@ -3050,36 +3124,53 @@ void Uart_TxRxTask(WIFI_TASK * task)
 			
 			break;
 		case isReceive:
+			WIFI_DATA_RECEIVE:
 			iReadLen = tty_7.read(Rx_Buffer + Rx_Length,2048);
 			if(iReadLen > 0) {
 				Rx_Length += iReadLen;
+				recvTimeout = HAL_GetTick();//更新时间
+				WiFi_State.wifiRecvFlag = TRUE;
 			}
-			//Rx_Buffer[Rx_Length] = '\0';
+			if(WiFi_State.wifiRecvFlag == TRUE && (HAL_GetTick() - recvTimeout) < 200)
+            	goto WIFI_DATA_RECEIVE;
+			else
+				WiFi_State.wifiRecvFlag == FALSE;
 			
-			if(task->wifi_TaskType > TYPE_Azure) {
+			if(task->wifi_TaskType > TYPE_Azure){
 				task_state = Device_toAzureTask(Rx_Buffer, &Rx_Length, task);
 			}
 			else{
 				task_state = Wifi_ATCmdTask(Rx_Buffer, &Rx_Length, task);
 			}
-			
-			if(task_state % 2){ 
+
+			if(task_state % 2){
 				task->CMD_COM_STATE_CTR = isTransmit;
 			}
-			else if(task_state == 0){
+			else if(task_state == NULL){
 				task->CMD_COM_STATE_CTR = isUartIdle;
 			}
-			else if(task_state == Rec_Data_Error) {
+			/*
+			else if(task_state == Rec_Data_Error){
 				Bluetooth_State.wifi_connect_status = ble_wifi_connect_error_598;
 				OSTimeDly(100, OS_OPT_TIME_DLY, &err);
 				task->CMD_COM_STATE_CTR = isTransmit;
 			}
-			else if(task_state == Http_Req_Error) {  
-				OSTimeDly(100, OS_OPT_TIME_DLY, &err);
+			*/
+
+			if(task_state == Http_Req_Error){  
+				//OSTimeDly(100, OS_OPT_TIME_DLY, &err);
 				task->CMD_COM_STATE_CTR = isTransmit;
 			}
+			/*
+			else if(task_state == Socket_Connect_Error){
+				//OSTimeDly(1000, OS_OPT_TIME_DLY, &err);
+				printf("socket connect error，reconnect...\r\n");
+				task->CMD_COM_STATE_CTR = isTransmit;
+			}
+			*/
 			else
 				task->CMD_COM_STATE_CTR = isUartIdle;
+			
 			break;
 		case isCycIdle:
 			task->CMD_COM_STATE_CTR = isUartIdle;

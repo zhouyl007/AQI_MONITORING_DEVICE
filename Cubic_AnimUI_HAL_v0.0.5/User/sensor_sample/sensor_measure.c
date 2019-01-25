@@ -1,10 +1,12 @@
 
 #include "bsp.h"
 #include "usart_sensor_cfg.h"	
+#include "vocTask.h"
 
 extern void  SENSORTaskPost ( void );
 extern void  SENSORTaskPend ( void);
 static int 	 compare_float_num(float x, float y);
+void voc_zero_callback(uint32_t zero_point);
 
 /*###################################################################################*/
 
@@ -13,7 +15,7 @@ static int32_t              adSampleValue[FILTER_BUFF_LEN];
 static int32_t              h2o_adSampleValue[FILTER_BUFF_LEN];
 static int32_t              pm2005_adSampleValue[FILTER_BUFF_LEN];
 static int32_t              temp_adSampleValue[FILTER_BUFF_LEN];
-static uint8_t              SNBuff[10];
+static uint8_t              SNBuff[10] = { 0 };
 /*static*/ int32_t          iTemp_Diff = 0;
 static uint8_t              PM2005_CMD_BUF[5] = {0x11,0x02,0x0B,0x01,0xE1};
 static uint8_t              CO2_CMD_BUF[4]    = {0x11,0x01,0x01,0xed};
@@ -26,6 +28,8 @@ UNION_CALI_DATA	            union_cali_data;
 PM25_Cali_Data		        pm25_cali_data;
 USART_Buffer                gMyUsartBuffer;
 MEASURE_DATE                gMyData;
+static uint32_t				voczero = NULL;
+
 
 /*####################################################################################*/
 
@@ -330,7 +334,7 @@ static void send_cmd_1EH(void)
 	uint16_t i = 0;
 	uint16_t num = 0;
 	unsigned char cmd_buffer[19] = {0};
-	unsigned int serial1[14] = {0x56,0x65,0x72,0x20,0x30,0x2E,0x31,0x2E,0x39,0x00,0x00,0x00,0x00,0x00}; // Ver 0.1.9
+	unsigned int serial1[14] = {0x56,0x65,0x72,0x20,/*0x30*/VER_NUM_0,0x2E,/*0x31*/VER_NUM_1,0x2E,/*0x39*/VER_NUM_2,0x00,0x00,0x00,0x00,0x00}; // Ver 0.1.9
 	
 	cmd_buffer[num++] 	= 0x16;
 	cmd_buffer[num++] 	= 0x0F;
@@ -845,7 +849,6 @@ static void calibration_command_rcv(void)
 
     #if USBHS_EN == 1
     USB_DATA_RECV:
-    
     memset(command_rx,NULL,sizeof(command_rx));    
     usb_Receive(command_rx,128);
     OSTimeDly(10, OS_OPT_TIME_DLY, &os_err);
@@ -916,7 +919,8 @@ static void calibration_command_rcv(void)
 
                         memset(env_buf,NULL,sizeof(env_buf));
                         snprintf((char *)env_buf,16,"%f",pm2005_coef_p1);
-                        ef_set_and_save_env(first_coef,(char *)env_buf);  // 保存系数k1   
+                        ef_set_and_save_env(first_coef,(char *)env_buf);  // 保存系数k1
+                        ef_set_and_save_env(first_coef_bk,(char *)env_buf);  // 保存系数k1备份
                     }
                     // 高点标定
                     else if(sensor_data >= 450 && sensor_data <= 550){
@@ -938,6 +942,7 @@ static void calibration_command_rcv(void)
                         memset(env_buf,NULL,sizeof(env_buf));
                         snprintf((char *)env_buf,16,"%f",pm2005_coef_p2);
                         ef_set_and_save_env(second_coef,(char *)env_buf);  // 保存系数k2 
+                        ef_set_and_save_env(second_coef_bk,(char *)env_buf);  // 保存系数k2备份
                     }
 					else {
 					}
@@ -960,7 +965,8 @@ static void calibration_command_rcv(void)
 
                     memset(env_buf,NULL,sizeof(env_buf));
                     snprintf((char *)env_buf,16,"%d",iTemp_Diff);
-                    ef_set_and_save_env(temp_diff,(char *)env_buf);
+                    ef_set_and_save_env(temp_diff,(char *)env_buf);//保存温度系数
+					ef_set_and_save_env(temp_diff_bk,(char *)env_buf);//保存温度系数备份
                     
 					send_cmd_0DH();
 					recv_buf_pos_ctr += (recv_byte_count + 3);
@@ -989,6 +995,9 @@ static void calibration_command_rcv(void)
 
 						if(sf_WriteBuffer((uint8_t *)sn_buf,SET_NUM_ADDR, 10) != 1)
 							sf_WriteBuffer((uint8_t *)sn_buf,SET_NUM_ADDR, 10);
+
+						if(sf_WriteBuffer((uint8_t *)sn_buf,SET_NUM_ADDR_BK, 10) != 1)
+							sf_WriteBuffer((uint8_t *)sn_buf,SET_NUM_ADDR_BK, 10);
                         
 						memmove(SNBuff,sn_buf,10);  /* 提取SN */ 
 				
@@ -1018,7 +1027,6 @@ static void calibration_command_rcv(void)
     }
     else
         goto USB_DATA_RECV;
-
     #endif
     
     #if RS485_EN == 1
@@ -1364,15 +1372,21 @@ static void calibration_sample_data(DATA_CAL_TYPE sensor_type,int sample_val)
 	switch(sensor_type)
 	{
 		case VOC:
-			adSampleValue[adSampleIndex++] = sample_val;
-			if(adSampleIndex >= 5){
-				int ad_filter_value = 0;
+			//adSampleValue[adSampleIndex++] = sample_val;
+			if((++adSampleIndex) >= 6){
+				//int ad_filter_value = 0;
 				
 				adSampleIndex = 0;
                 
-				ad_filter_value = GetMedianNum(adSampleValue,FILTER_BUFF_LEN);
+			//	ad_filter_value = GetMedianNum(adSampleValue,FILTER_BUFF_LEN);
 				
-				GetVocValue(&sensor_cali_data.voc_cali_data,sample_val);
+				//GetVocValue(&sensor_cali_data.voc_cali_data,sample_val);
+				sensor_cali_data.voc_cali_data = VOC_ad_Transform_ppb(ADC_ConvertedValue,voc_zero_callback);
+				//printf("voc 1s callback voc %d ADC %d r:%d z:%d %d\r\n",sensor_cali_data.voc_cali_data,ADC_ConvertedValue,VOC_Resistor_Get(),VOC_Zero_Get(),voczero);
+				
+				if(sensor_cali_data.voc_cali_data == NULL)
+					sensor_cali_data.voc_cali_data = 1;
+					
 				#if RS485_DEBUG
 				printf("\r\n sensor_cali_data.voc_cali_data = %d\r\n",sensor_cali_data.voc_cali_data);
 				#endif
@@ -1408,7 +1422,10 @@ static void calibration_sample_data(DATA_CAL_TYPE sensor_type,int sample_val)
 					sensor_cali_data.pm2005_cali_data = (int)(pm2005_coef_p1 * sample_val);
 				else
 					sensor_cali_data.pm2005_cali_data = (int)(pm25_cali_data.first_cali_value + pm2005_coef_p2 * (sample_val - pm25_cali_data.first_raw_value));
-                
+
+				if(sensor_cali_data.pm2005_cali_data == NULL)
+					sensor_cali_data.pm2005_cali_data = 1;
+					
 				#if RS485_DEBUG
 				printf("\r\n sensor_cali_data.pm2005_cali_data = %d\r\n",sensor_cali_data.pm2005_cali_data);
 				#endif
@@ -1451,6 +1468,27 @@ static int compare_float_num(float x, float y)
     else 
 		return 0;  // x = y?
 } 
+
+// VOC 零点回调函数
+void voc_zero_callback(uint32_t zero_point)
+{
+	char p_zero_point[8]= { 0 };
+	
+	sprintf(p_zero_point,"%d",zero_point);
+	ef_set_and_save_env(VOC_ZERO,p_zero_point);
+	ef_set_and_save_env(VOC_ZERO_BK,p_zero_point);
+}
+
+
+// 定时1s回调
+void voc_tmr_callback(void *p_tmr,void *p_arg)
+{
+	//sensor_cali_data.voc_cali_data = VOC_ad_Transform_ppb(ADC_ConvertedValue,voc_zero_callback);
+	//printf("voc 1s callback voc %d ADC %d\r\n",sensor_cali_data.voc_cali_data,ADC_ConvertedValue);
+	//if(sensor_cali_data.voc_cali_data == NULL) // 开机VOC赋值为1
+	//	sensor_cali_data.voc_cali_data = 1;
+}
+
 
 /*######################################## main #######################################################*/
 
@@ -1523,20 +1561,23 @@ void sensor_measure(void)
 	// 读取高点原始值、标定值
 	getHighDateFromFlash(&pm25_cali_data.second_raw_value,&pm25_cali_data.second_cali_value);
     
-    if((env_buf = ef_get_env(first_coef)) > NULL)
+    if((env_buf = ef_get_env(first_coef)) > NULL || (env_buf = ef_get_env(first_coef_bk)) > NULL){
         pm2005_coef_p1 = atof(env_buf);
+    }
     else
         pm2005_coef_p1 = 1.0f;
 
-    if((env_buf = ef_get_env(second_coef)) > NULL)
+    if((env_buf = ef_get_env(second_coef)) > NULL || (env_buf = ef_get_env(second_coef_bk)) > NULL){
         pm2005_coef_p2 = atof(env_buf);
+    }
     else
         pm2005_coef_p2 = 1.0f;
 
     printf("PM2.5 Coefficient：%05.5f %05.5f\r\n",pm2005_coef_p1,pm2005_coef_p2);
 
-    if((env_buf = ef_get_env(temp_diff)) > NULL)
+    if((env_buf = ef_get_env(temp_diff)) > NULL || (env_buf = ef_get_env(temp_diff_bk)) > NULL){
         iTemp_Diff = atol(env_buf);
+    }
     else
         iTemp_Diff = 0;
 
@@ -1546,13 +1587,29 @@ void sensor_measure(void)
 	//	//memmove(SNBuff,env_buf,10);
 	//	printf("Serial Number: %s\r\n",env_buf);
     //}
-    sf_ReadBuffer((u8 *)SNBuff, SET_NUM_ADDR, 10);       /* 编号 */
-	printf("Serial Number: %04d%04d%04d%04d%04d\r\n",(SNBuff[0]  << 8) + SNBuff[1],(SNBuff[2] << 8) + SNBuff[3],
-													  (SNBuff[4] << 8) + SNBuff[5],(SNBuff[6] << 8) + SNBuff[7],
-													  (SNBuff[8] << 8) + SNBuff[9]);
+    memset(SNBuff,NULL,sizeof(SNBuff));
+	sf_ReadBuffer((u8 *)SNBuff, SET_NUM_ADDR, 10);       	/* 编号 */
+	
+	if(SNBuff[0] == NULL)
+    	sf_ReadBuffer((u8 *)SNBuff, SET_NUM_ADDR_BK, 10);       	/* 编号备份 */
+	
+	printf("Serial Number: %04d%04d%04d%04d%04d\r\n",	(SNBuff[0]  << 8) + SNBuff[1],(SNBuff[2] << 8) + SNBuff[3],
+													  		(SNBuff[4] << 8) + SNBuff[5],(SNBuff[6] << 8) + SNBuff[7],
+													  		(SNBuff[8] << 8) + SNBuff[9]);
 	
     #endif
 
+	//上电读取VOC零点值，需处理初次使用或恢复出厂情况
+
+	if((env_buf = ef_get_env(VOC_ZERO)) > NULL || (env_buf = ef_get_env(VOC_ZERO_BK)) > NULL){
+		voczero = atoi(env_buf); //获取零点
+    }
+    else{ // 首次使用
+		voczero = 100000;
+    }
+
+	VOC_Zero_Init(voczero);//初始化零点
+	
 	while(1) {
 		/* 校准命令接受处理 */
 		#if CALIBRATION_EN == 1

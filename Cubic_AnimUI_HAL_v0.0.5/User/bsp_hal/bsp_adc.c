@@ -126,19 +126,19 @@ int GetMedianNum(int * bArray, int iFilterLen)
     return bTemp;  
 }  
 
-void GetVocValue(int * pData,int FitterValue)
+void GetVocValue(int *pData,int FitterValue)
 {
-	static unsigned int         voc_ad_temp[16];                  // voc采样值 数组
-	static unsigned char        voc_current_first = 8;            // 第一个数组当前位置
-	static unsigned int         voc_first_temp;                   // 第一个数组 平均值
-	static unsigned char        voc_current_second = 3;           // 第二个数组当前位置
-	static unsigned int         voc_second_temp;                  // 第二个数组 平均值
-	static unsigned char        voc_save_count = 13;              // 当前数组位置
-	static unsigned int         voc_ref = 0xffff;                // 参考
-	static unsigned short int   voc_init_count=0;                 // 初始化时间计数
-	unsigned int                voc_k =0;                         // 计算 voc 系数
+	static unsigned int         voc_ad_temp[16];                  // voc采样值数组
+	static unsigned char        voc_current_first 	= 8;          // 第一个数组当前位置
+	static unsigned int         voc_first_temp;                   // 第一个数组平均值
+	static unsigned char        voc_current_second 	= 3;          // 第二个数组当前位置
+	static unsigned int         voc_second_temp;                  // 第二个数组平均值
+	static unsigned char        voc_save_count 		= 13;         // 当前数组位置
+	static unsigned int         voc_ref 			= 0xffff;     // 参考
+	static unsigned short int   voc_init_count 		= 0;          // 初始化时间计数
+	unsigned int                voc_k 				= 0;          // 计算 voc 系数
 	
-	voc_init_count ++; //  voc 检测处理
+	voc_init_count++; 				//  voc 检测处理
     
 	if(voc_init_count > 14) {
         
@@ -152,8 +152,11 @@ void GetVocValue(int * pData,int FitterValue)
 		voc_current_first ++;
 		voc_current_second ++;
 		
-		if(voc_current_first > 15)   voc_current_first = 0;
-		if(voc_current_second > 15)  voc_current_second = 0;
+		if(voc_current_first > 15)   
+			voc_current_first  = 0;
+		
+		if(voc_current_second > 15)  
+			voc_current_second = 0;
         
 		// voc_first_temp[9-13次采样] ,voc_second_temp[0-4次采样]
 		
@@ -169,14 +172,15 @@ void GetVocValue(int * pData,int FitterValue)
 			if(voc_k < 50)                                           // 系数不能小于 0.5
 				voc_k = 35;
             
-			if(voc_k > 200)                                         // 系数不能大于  2
+			if(voc_k > 200)                                          // 系数不能大于  2
 				voc_k = 200;
 			
-			* pData = voc_k * (float)(voc_first_temp - voc_ref) / (float)1000.0 ;
+			*pData = voc_k * (float)(voc_first_temp - voc_ref) / (float)1000.0;
 		}
-		else
-			* pData = 0;
-
+		else {
+			*pData = 0;
+		}
+		
         /*
 		if(voc_init_count < 300)
 			* pData = 0;
@@ -184,8 +188,8 @@ void GetVocValue(int * pData,int FitterValue)
 			voc_init_count = 610;
         */
 	}
-	else {
-        
+	else 
+	{
 		voc_ad_temp[voc_init_count - 1] = FitterValue; // voc_ad_temp[0-13]
 		
 		if(voc_init_count == 14) {
@@ -193,11 +197,11 @@ void GetVocValue(int * pData,int FitterValue)
 			voc_second_temp = (voc_ad_temp[0] + voc_ad_temp[1]  + voc_ad_temp[2]  + voc_ad_temp[3]  + voc_ad_temp[4] ) / 5;
 			voc_first_temp  = (voc_ad_temp[9] + voc_ad_temp[10] + voc_ad_temp[11] + voc_ad_temp[12] + voc_ad_temp[13] ) / 5;
 			
-			voc_ref = voc_second_temp;
+			voc_ref = voc_second_temp - 100;// -100 just for testing
             
 		}
         
-		* pData = 0;
+		*pData = 0;
 	}
 }
 

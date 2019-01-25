@@ -24,6 +24,7 @@
 #define PASS_ADDR  			    0x00200
 #define HASH_ADDR  			    0x00400
 #define LUMI_ADDR  			    0x00600
+#define SET_NUM_ADDR_BK 		0x600000
 #define SET_NUM_ADDR 		    0x700000
 #define TEMP_CAL_ADDR 		    0x40000
 #define PM25_CAL_ADDR 		    0x00800

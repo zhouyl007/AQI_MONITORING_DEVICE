@@ -116,12 +116,13 @@ typedef struct{
 	char *DeviceId;
 	char *DeviceType;
 	char primaryKey[32];
+	char secondKey[32];
 }Login_Body_Req;
 
 typedef struct{
-	char SSID[80];
-	char PASS[80];
-	char ACCOUNTID[64];
+	char SSID[128];
+	char PASS[128];
+	char ACCOUNTID[128];
 	char *ID;
 	unsigned char WIFI_SSID_LEN;
 	unsigned char WIFI_PASS_LEN;
@@ -129,15 +130,17 @@ typedef struct{
     unsigned char ble_conn_sta;  // 蓝牙接入
     unsigned char ble_recv_done; // 蓝牙接收完成
     unsigned char wifi_connect_error; 
+	unsigned char ble_recv_error; 
+	unsigned char send_done;
+	unsigned char wifi_connect_success;
+	unsigned char ble_uart_recv_flag;
 }Bluetooth_Login;
 
 typedef struct {
-
     uint8_t  header;
     uint32_t length;
     uint8_t  paramBuf[128];
     uint8_t  crc;
-    
 }Param_t;
 
 typedef struct{
@@ -145,21 +148,20 @@ typedef struct{
 	unsigned char Post_Allow;
 	unsigned char Reset_WIFI;
 	unsigned char Enter_ENTM;
-	unsigned char Tmr5_Ctl;
 	unsigned char WIFI_Reboot;
 	unsigned char GET_PARA;
 	unsigned char Set_Timer;
 	unsigned char PostTimes;
     unsigned char RecTimeOut;
+	unsigned char Tmr5_Ctl;
     unsigned char Network_OK;
     unsigned char Login_OK;
+	unsigned char wifiRecvFlag;
 }WIFI_CTR;
 
 typedef struct{
-    
     unsigned char AppSettingCtr;
     unsigned char AppFactroyCtr; // 首次启动/恢复出厂标志
-
 }APP_WIFI_t;
 
 extern APP_WIFI_t appCtl;
@@ -242,6 +244,7 @@ typedef struct {
     u16 o3EaqMax;
     u8 productId;   //  (保留)
     u8 isAutoEn;    // 自动运行控制启动
+    u8 isAutoEnCtl; // 自动运行控制
     u8 autoTim;     // 自动亮起时间间隔 (0-30 mims,1-1 hour,2-2 hours)
     char autoFromDate[24];    // 自动运行起始时间
     char autoToDate[24];      // 自动运行结束时间
@@ -262,6 +265,9 @@ typedef struct {
 	u8 laguCtl;
 	s_Timestamp_t cloudTimestamp;
 }azure_cloud; 
+
+extern azure_cloud  cloud;
+
 
 void Uart_TxRxTask(WIFI_TASK * task);
 /******************	    API     ************************/																			 

@@ -483,6 +483,10 @@ static unsigned int buflen(void)
     return ring_buf_len(&ringbuf_recv);
 }
 
+static unsigned int buflen_u6(void)
+{
+    return ring_buf_len(&ringbuf_recv_6);
+}
 
 
 /*******************************************************************************
@@ -543,7 +547,7 @@ const tty_t tty_6 =
     recv_u6,
     NULL,
     clear_u6,
-    NULL,
+    buflen_u6,
     NULL
 };
 

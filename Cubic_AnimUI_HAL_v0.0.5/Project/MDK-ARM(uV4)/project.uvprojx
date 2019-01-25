@@ -335,7 +335,7 @@
               <MiscControls>--diag_suppress=870</MiscControls>
               <Define>USE_HAL_DRIVER,STM32F429xx,__CC_ARM</Define>
               <Undefine></Undefine>
-              <IncludePath>..\..\Libraries\CMSIS\Include;..\..\Libraries\CMSIS\Device\ST\STM32F4xx\Include;..\..\User;..\..\emWin\Include;..\..\emWin\emWinTask;..\..\emWin\Config;..\..\emWin\PNG;..\..\User\font;..\..\User\AnimUIDemo\ALDES;..\..\User\sensor_sample;..\..\User\wifi;..\..\User\cjson;..\..\User\Azure\azure_c_shared_utility;..\..\User\AnimUIDemo\ANIMATION_Basics;..\..\User\bsp_hal;..\..\Libraries\STM32F4xx_HAL_Driver\Inc;..\..\UCOSIII\uC-CPU;..\..\UCOSIII\uC-LIB;..\..\UCOSIII\UCOS-BSP;..\..\UCOSIII\UCOS-CONFIG;..\..\UCOSIII\uCOS-III\Source;..\..\UCOSIII\uC-CPU\ARM-Cortex-M4\RealView;..\..\UCOSIII\uC-LIB\Ports\ARM-Cortex-M4\RealView;..\..\UCOSIII\uCOS-III\Ports\ARM-Cortex-M4\Generic\RealView;..\..\User\bsp_hal\delay;..\..\User\bsp_hal\sys;..\..\User\usb\Middlewares\ST\STM32_USB_Device_Library\Core\Inc;..\..\User\usb\Middlewares\ST\STM32_USB_Device_Library\Class\CDC\Inc;..\..\User\usb\Inc;..\..\User\easyflash\inc;..\..\User\easylogger\inc;..\..\User\easylogger\plugins\flash;..\..\User\cm_backtrace;..\..\User\cm_backtrace\fault_handler;..\..\User\easylogger</IncludePath>
+              <IncludePath>..\..\Libraries\CMSIS\Include;..\..\Libraries\CMSIS\Device\ST\STM32F4xx\Include;..\..\User;..\..\emWin\Include;..\..\emWin\emWinTask;..\..\emWin\Config;..\..\emWin\PNG;..\..\User\font;..\..\User\AnimUIDemo\ALDES;..\..\User\sensor_sample;..\..\User\wifi;..\..\User\cjson;..\..\User\Azure\azure_c_shared_utility;..\..\User\AnimUIDemo\ANIMATION_Basics;..\..\User\bsp_hal;..\..\Libraries\STM32F4xx_HAL_Driver\Inc;..\..\UCOSIII\uC-CPU;..\..\UCOSIII\uC-LIB;..\..\UCOSIII\UCOS-BSP;..\..\UCOSIII\UCOS-CONFIG;..\..\UCOSIII\uCOS-III\Source;..\..\UCOSIII\uC-CPU\ARM-Cortex-M4\RealView;..\..\UCOSIII\uC-LIB\Ports\ARM-Cortex-M4\RealView;..\..\UCOSIII\uCOS-III\Ports\ARM-Cortex-M4\Generic\RealView;..\..\User\bsp_hal\delay;..\..\User\bsp_hal\sys;..\..\User\usb\Middlewares\ST\STM32_USB_Device_Library\Core\Inc;..\..\User\usb\Middlewares\ST\STM32_USB_Device_Library\Class\CDC\Inc;..\..\User\usb\Inc;..\..\User\easyflash\inc;..\..\User\easylogger\inc;..\..\User\easylogger\plugins\flash;..\..\User\cm_backtrace;..\..\User\cm_backtrace\fault_handler;..\..\User\easylogger;..\..\User\sensor_sample\voc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -508,6 +508,11 @@
               <FileName>bsp_RNG.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\User\bsp_hal\bsp_RNG.c</FilePath>
+            </File>
+            <File>
+              <FileName>vocTask.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\User\sensor_sample\voc\vocTask.c</FilePath>
             </File>
           </Files>
         </Group>

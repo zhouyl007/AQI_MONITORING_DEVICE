@@ -496,6 +496,7 @@ extern int GUI_Anim_Delay_Fading(int Delay);
 extern void GUI_Anim_ClearUp(void);
 extern azure_cloud cloud;
 
+#if 0
 static const PAL_BITMAP_CONTEXT _HouseSmilePaletteBitmaps[] = {
    { &bmhouse_smile,     _Colorshouse_smile,     _aPalettesHouse,       GUI_COUNTOF(_Colorshouse_smile)     },
 };
@@ -503,6 +504,7 @@ static const PAL_BITMAP_CONTEXT _HouseSmilePaletteBitmaps[] = {
 static const PAL_BITMAP_CONTEXT _HouseSmilePaletteBitmaps_Bk[] = {
    { &bmhouse_smile,     _Colorshouse_smile,     _aPalettesHouse_Bk,     GUI_COUNTOF(_Colorshouse_smile)     },
 };
+#endif
 
 static const  PAL_BITMAP_CONTEXT _apPaletteBitmapsSmile[] = {
    { &bmhouse_smile,     _Colorshouse_smile,     _aPalettesHouse,     GUI_COUNTOF(_Colorshouse_smile)},
@@ -679,6 +681,21 @@ int Face_Appear_Fading_Pout_IAQ(const GUI_BITMAP *pBM, int x_offset, int y_offse
 	return NULL;
 }
 
+extern int GUI_Display_IAQ_NA(int x_offset,int y_offset);
+
+int Face_Appear_Fading_NA(int x_offset, int y_offset)
+{
+	GUI_Display_IAQ_NA(x_offset,y_offset);
+	
+	if(GUI_Anim_Delay_Fading(3000)){
+			GUI_Anim_ClearUp();
+			return -1;
+	 }
+		
+	return NULL;
+}
+
+
 int Face_Appear_Fading_Smile_EAQ(const GUI_BITMAP *pBM, int x_offset, int y_offset)
 {
 	unsigned i, j;
@@ -696,8 +713,8 @@ int Face_Appear_Fading_Smile_EAQ(const GUI_BITMAP *pBM, int x_offset, int y_offs
 	}
     
 	if(GUI_Anim_Delay_Fading(1000)){
-			GUI_Anim_ClearUp();
-			return -1;
+		GUI_Anim_ClearUp();
+		return -1;
 	 }
 		
 	for (i = 0; i < GUI_COUNTOF(_aPalettesHouse_Bk) - 1; i++) {

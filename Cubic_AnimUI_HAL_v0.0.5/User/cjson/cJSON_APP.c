@@ -370,7 +370,8 @@ int create_post_body_objects(char *Mac, unsigned short pm25_val, unsigned short 
 int cJSON_to_str(char *json_string, char *json_string_type,char *str_val)  
 {  
     cJSON *root=cJSON_Parse(json_string);  
-    if (!root)  {  
+    if (!root)  {
+		printf("[%s]\n",json_string);
         printf("Error before: [%s]\n",cJSON_GetErrorPtr());  
         return -1;  
     }  
@@ -378,7 +379,7 @@ int cJSON_to_str(char *json_string, char *json_string_type,char *str_val)
         cJSON *item=cJSON_GetObjectItem(root,json_string_type);  
         if(item!=NULL)  {  
             //printf("cJSON_GetObjectItem: type=%d, key is %s, value is %s\n",item->type,item->string,item->valuestring); 
-            if(strlen(item->valuestring) <= 64)
+            if(strlen(item->valuestring) <= 88)
                 memcpy(str_val,item->valuestring,strlen(item->valuestring));
             else
                 printf("cjson body is too long!\n");

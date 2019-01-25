@@ -52,7 +52,6 @@ static  void  AppObjCreate          (void);
 static  void  App_Printf (CPU_CHAR *format, ...);
 static  void  SystemClock_Config(void);
 
-
 /*
 *******************************************************************************************************
 *                               变量
@@ -63,7 +62,7 @@ static  OS_SEM           AppPrintfSemp;	/* 用于printf互斥 */
 static  OS_SEM           SEM_SYNCH;	    /* 用于同步 */
 static	OS_SEM		     WIFI_SEM; 		/* 互斥，保护密钥*/
 static	OS_SEM		     SENSOR_SEM; 	/* 互斥，保护传感器数据*/
-/*static*/  OS_MUTEX         SEM_MUTEX;     /* 用于互斥 */
+		OS_MUTEX         SEM_MUTEX;     /* 用于互斥 */
 
         OS_TMR 	         tmr1;			/* timer1 */
         OS_TMR			 tmr2;			/* timer2 Response超时*/
@@ -73,6 +72,7 @@ static  OS_TMR			 tmr5;			/* timer5 WIFI模块控制超时，硬件重启 */
 static  OS_TMR			 tmr6;			/* USART3 接收超时 */
 static  OS_TMR			 tmr7;			/* touch key 检测 */
 static  OS_TMR			 tmr8;			/* reset key 检测 */
+static  OS_TMR			 tmr9;			/* voc */
 
 /////////////////////////////////////////////////////////////////////
 
@@ -83,13 +83,14 @@ void tmr4_callback(void *p_tmr,void *p_arg);
 void tmr5_callback(void *p_tmr,void *p_arg);
 void tmr7_callback(void *p_tmr,void *p_arg);
 void tmr8_callback(void *p_tmr,void *p_arg);
+extern void voc_tmr_callback(void *p_tmr,void *p_arg);
 
-WORK_MODE_SWITCH_T mode_switch; 
-WIFI_TASK Sys_Task;
-APP_WIFI_t appCtl;
-extern Login_Body_Req POST_Login;
-extern WIFI_CTR WiFi_State;
-extern Bluetooth_Login Bluetooth_State;
+WORK_MODE_SWITCH_T 			mode_switch; 
+WIFI_TASK 					Sys_Task;
+APP_WIFI_t 					appCtl;
+extern Login_Body_Req 		POST_Login;
+extern WIFI_CTR 			WiFi_State;
+extern Bluetooth_Login 		Bluetooth_State;
 
 typedef enum {
    TIMER_SWITCH_ON,
@@ -302,20 +303,8 @@ static void AppTaskGUI(void *p_arg)
 *   优 先 级：OS_CFG_PRIO_MAX - 4u
 *********************************************************************************************************
 */
-
 extern void WifiInit(void);
 extern void clear_sendbuf(void);
-
-typedef enum {
-	  WIFI_CheckLink = 0,
-	  WIFI_GetState,
-	  WIFI_SetPara,
-	  WIFI_PostLogin,
-	  WIFI_PostBody,
-	  WIFI_HardReset,
-	  WIFI_GetData,
-	  WIFI_Idle,
-} WIFI_RUN_MODE;
 
 volatile uint8_t WIFIRunModeLoop = WIFI_CheckLink;
 
@@ -331,21 +320,19 @@ static void AppTaskWIFI(void *p_arg)
 	
 	memset(&WiFi_State,NULL,sizeof(WiFi_State));
 
-	env_buf = ef_get_env(prim_key);
-	
-    if(env_buf > NULL){
-		
+    if((env_buf = ef_get_env(prim_key)) > NULL || (env_buf = ef_get_env(secondaryKey)) > NULL){
         if(memcmp(env_buf,factory,strlen(factory)) == NULL){ // 恢复出厂设置
             appCtl.AppSettingCtr = TRUE;    // 开启Provisionning
             appCtl.AppFactroyCtr = TRUE;
 		}
-        else{  
+        else
+		{  
             memset(POST_Login.primaryKey,NULL,sizeof(POST_Login.primaryKey));  // 获取 primaryKey
             memmove(POST_Login.primaryKey,env_buf,strlen(env_buf));
             appCtl.AppSettingCtr = FALSE;   // 关闭 Provisionning
         }              
     }
-    else if(env_buf == NULL){ // 设备首次启动
+    else if((env_buf = ef_get_env(prim_key)) == NULL || (env_buf = ef_get_env(secondaryKey)) == NULL){ // 设备首次启动
         appCtl.AppSettingCtr = TRUE;        // 开启Provisionning
         appCtl.AppFactroyCtr = TRUE;
     }
@@ -374,11 +361,12 @@ static void AppTaskWIFI(void *p_arg)
 				Sys_Task.wifi_taskqueue &= 0;
 				Sys_Task.wifi_taskqueue |= Task_GetState;
 				Uart_TxRxTask(&Sys_Task);
-                
+                // 未注册
 				if(WiFi_State.Network_OK && /*!WiFi_State.Login_OK*/appCtl.AppSettingCtr && WiFi_State.Enter_ENTM){
 					WiFi_State.Enter_ENTM &= 0;
 					WIFIRunModeLoop = WIFI_PostLogin;
 				}
+				// 已注册
 				if(WiFi_State.Network_OK &&/*WiFi_State.Login_OK*/!appCtl.AppSettingCtr && WiFi_State.Enter_ENTM){
 					WiFi_State.Enter_ENTM &= 0;
 					OSTmrStart(&tmr4,&err); 	   // 启动定时器4,设定获取WIFI状态时间间隔
@@ -392,7 +380,6 @@ static void AppTaskWIFI(void *p_arg)
                     
 					//printf("wifi get_state go to wifi post_body...\r\n");
 				}
-				
 				if(!WiFi_State.Network_OK && WiFi_State.Enter_ENTM){
 					WiFi_State.Enter_ENTM &= 0;
 					WIFIRunModeLoop = WIFI_SetPara;
@@ -404,6 +391,8 @@ static void AppTaskWIFI(void *p_arg)
 					WiFi_State.Tmr5_Ctl = FALSE;
 					WiFi_State.Reset_WIFI = TIMER_SWITCH_OFF;
 					OSTmrStop(&tmr5,OS_OPT_TMR_NONE,0,&err); // 停止timer5,关闭WIFI模块重启间隔
+					
+					printf("--------------tmr5 stop...\r\n");
 				}
 				break;
 			case WIFI_PostLogin:
@@ -430,7 +419,7 @@ static void AppTaskWIFI(void *p_arg)
 				}
 				else if(!WiFi_State.Post_Allow && WiFi_State.GET_PARA){	// waiting get_state timer,timer4超时则获取WIFI状态
 				
-					WiFi_State.GET_PARA &= 0;
+					WiFi_State.GET_PARA &= NULL;
 					WIFIRunModeLoop = WIFI_GetState;
 				}
 				
@@ -484,15 +473,13 @@ static void AppTaskWIFI(void *p_arg)
 				Sys_Task.CMD_SEND_CTR = FALSE;
 				Sys_Task.CMD_COM_STATE_CTR = FALSE;
 				WIFIRunModeLoop = WIFI_CheckLink;
-                printf("wifi hard reset...\r\n");
+                printf("WIFI Hard Reset...\r\n");
 				break;
 		    default:  
 		        break;
 		}
 
-        //printf("wifi run in\r\n");
 	  	OSTimeDly(500, OS_OPT_TIME_DLY, &err);
-        //printf("wifi run out\r\n");
 	}
 }
 
@@ -508,7 +495,6 @@ extern int GetSubStrPos(char *str1,char *str2);
 extern int cJSON_to_str(char *json_string, char *json_string_type,char *str_val); 
 extern int create_ble_request_objects(char *Mac,char *IdCloud,char *Result,char *Detail,char *Version,char *ble_request);
 extern void cjson_content_clip(STRING_ *StringIn);
-
 extern const tty_t tty_u6;
 
 void bl_rst_config(void){
@@ -527,7 +513,6 @@ void bl_rst_config(void){
 
 void bl_reset(void){
     OS_ERR  err;
-    
     BL_RST_OFF;
 	OSTimeDly(10, OS_OPT_TIME_DLY, &err);
 	BL_RST_ON;
@@ -578,115 +563,178 @@ int paramProtocolLoad(Param_t *param, uint32_t addr)
 static void ble_request_manager(ble_request_t ble_request)
 {
 	OS_ERR  err; 
-    static uint8_t send_done = NULL;
 	static STRING_ StrConv;
 	char Id_Cloud[32] = {"F0FE6B89C82C_OQAI"};
     
 	switch(ble_request){
 		case ble_wifi_connect_request:
-			if(Bluetooth_State.SSID[0] != '\0' && Bluetooth_State.PASS[0] != '\0'){
-                #if 0
-                #if 0
-				if((sf_WriteBuffer((u8*)Bluetooth_State.SSID,SSID_ADDR,sizeof(Bluetooth_State.SSID)))!= 1)
-					sf_WriteBuffer((u8*)Bluetooth_State.SSID,SSID_ADDR,sizeof(Bluetooth_State.SSID));
-                
-				if((sf_WriteBuffer((u8*)Bluetooth_State.PASS,PASS_ADDR,sizeof(Bluetooth_State.PASS)))!= 1)
-					sf_WriteBuffer((u8*)Bluetooth_State.PASS,PASS_ADDR,sizeof(Bluetooth_State.PASS));
+			//if(Bluetooth_State.SSID[0] != '\0' && Bluetooth_State.PASS[0] != '\0'){
+            #if 0
+            #if 0
+			if((sf_WriteBuffer((u8*)Bluetooth_State.SSID,SSID_ADDR,sizeof(Bluetooth_State.SSID)))!= 1)
+				sf_WriteBuffer((u8*)Bluetooth_State.SSID,SSID_ADDR,sizeof(Bluetooth_State.SSID));
+            
+			if((sf_WriteBuffer((u8*)Bluetooth_State.PASS,PASS_ADDR,sizeof(Bluetooth_State.PASS)))!= 1)
+				sf_WriteBuffer((u8*)Bluetooth_State.PASS,PASS_ADDR,sizeof(Bluetooth_State.PASS));
 
-                if((sf_WriteBuffer((u8*)Bluetooth_State.ACCOUNTID,HASH_ADDR,sizeof(Bluetooth_State.ACCOUNTID)))!= 1)
-					sf_WriteBuffer((u8*)Bluetooth_State.ACCOUNTID,HASH_ADDR,sizeof(Bluetooth_State.ACCOUNTID));
-                #else
-                paramProtocolSave(Bluetooth_State.SSID,strlen(Bluetooth_State.SSID),SSID_ADDR);
-                paramProtocolSave(Bluetooth_State.PASS,strlen(Bluetooth_State.PASS),PASS_ADDR);
-                paramProtocolSave(Bluetooth_State.ACCOUNTID,strlen(Bluetooth_State.ACCOUNTID),HASH_ADDR);
-                #endif
-                #endif
-                ef_set_and_save_env(ssid,Bluetooth_State.SSID);
-                ef_set_and_save_env(pass,Bluetooth_State.PASS);
-                //ef_set_and_save_env(account_id,Bluetooth_State.ACCOUNTID);
-                
-                WIFIRunModeLoop = WIFI_HardReset;
-				Sys_Task.blue_cfg_flag = TRUE;
-                Bluetooth_State.ble_recv_done = TRUE;
-                send_done = FALSE;
-                //printf("\r\nwifi connect request receive successfully\r\n\r\n");
-			}
-			
+            if((sf_WriteBuffer((u8*)Bluetooth_State.ACCOUNTID,HASH_ADDR,sizeof(Bluetooth_State.ACCOUNTID)))!= 1)
+				sf_WriteBuffer((u8*)Bluetooth_State.ACCOUNTID,HASH_ADDR,sizeof(Bluetooth_State.ACCOUNTID));
+            #else
+            paramProtocolSave(Bluetooth_State.SSID,strlen(Bluetooth_State.SSID),SSID_ADDR);
+            paramProtocolSave(Bluetooth_State.PASS,strlen(Bluetooth_State.PASS),PASS_ADDR);
+            paramProtocolSave(Bluetooth_State.ACCOUNTID,strlen(Bluetooth_State.ACCOUNTID),HASH_ADDR);
+            #endif
+            
+            ef_set_and_save_env(ssid,Bluetooth_State.SSID);
+            ef_set_and_save_env(pass,Bluetooth_State.PASS);
+            //ef_set_and_save_env(account_id,Bluetooth_State.ACCOUNTID);
+            #endif
+            WIFIRunModeLoop = WIFI_HardReset;
+			Sys_Task.blue_cfg_flag = TRUE;
+            Bluetooth_State.ble_recv_done = TRUE;
+            Bluetooth_State.send_done = FALSE; // 每次启动连接时则开始599报错
+			//}
 			Bluetooth_State.wifi_connect_status = ble_idle;
 			break;
 		case ble_wifi_connect_success:
+			// 配对成功后保存PASS和SSID
+			ef_set_and_save_env(ssid,Bluetooth_State.SSID);
+            ef_set_and_save_env(pass,Bluetooth_State.PASS);
+			memset(Bluetooth_State.PASS,NULL,sizeof(Bluetooth_State.PASS));
+			memset(Bluetooth_State.SSID,NULL,sizeof(Bluetooth_State.SSID));
+			
 			create_ble_request_objects((char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_mac,(char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_deviceid,"success","200",sw_version,StrConv.s);
 			cjson_content_clip(&StrConv);
-
             tty_6.write(StrConv.s,strlen(StrConv.s));
-            OSTimeDly(500, OS_OPT_TIME_DLY, &err);
-            
-            BL_RST_OFF;     // 设置成功则关闭蓝牙
-            ef_set_and_save_env(bleSetting,"ok"); // 保存蓝牙-云端设置状态
-            
 			printf("\r\n%s\r\n",StrConv.s);
-
+			
+			ef_set_and_save_env(bleSetting,"ok"); 		// 保存蓝牙-云端设置状态
+            Bluetooth_State.wifi_connect_success = TRUE;
 			Bluetooth_State.wifi_connect_status = ble_idle;
 			break;
 		case ble_wifi_connect_error_401:
 			create_ble_request_objects((char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_mac,(char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_deviceid,"error","401",sw_version,StrConv.s);
 			cjson_content_clip(&StrConv);
 			tty_6.write(StrConv.s,strlen(StrConv.s));
-
 			printf("\r\n%s\r\n",StrConv.s);
 
-            //bl_reset(); // 蓝牙重启，准备下一次发送?
+			// 连接失败则清除WIFI配置数据(注意：仅在注册时才会将配置信息清除)
+			if(appCtl.AppSettingCtr){
+        		memset(Sys_Task.SSID,NULL,sizeof(Sys_Task.SSID));
+				memcpy(Sys_Task.SSID,account,strlen(account));
+        		memset(Sys_Task.PASS,NULL,sizeof(Sys_Task.PASS));
+				memcpy(Sys_Task.PASS,passwd,strlen(passwd));
+			}
+			memset(Bluetooth_State.PASS,NULL,sizeof(Bluetooth_State.PASS));
+			memset(Bluetooth_State.SSID,NULL,sizeof(Bluetooth_State.SSID));
 
+			Bluetooth_State.ble_recv_done = FALSE; // 蓝牙数据接收完成标志，出现401错误将其清零
+			Bluetooth_State.ble_conn_sta = FALSE;  // 出现401错误将其清零，回到appdownload页面。
             Bluetooth_State.wifi_connect_error = TRUE;
+			Bluetooth_State.send_done = TRUE; // 该场景下应关闭599报错
 			Bluetooth_State.wifi_connect_status = ble_idle;
 			break;
 		case ble_wifi_connect_error_500:
 			create_ble_request_objects((char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_mac,(char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_deviceid,"error","500",sw_version,StrConv.s);
 			cjson_content_clip(&StrConv);
 			tty_6.write(StrConv.s,strlen(StrConv.s));
-
 			printf("\r\n%s\r\n",StrConv.s);
 
-            //bl_reset(); // 蓝牙重启，准备下一次发送?
-            
+			// 连接失败则清除WIFI配置数据(注意：仅在注册时才会将配置信息清除)
+			if(appCtl.AppSettingCtr){
+        		memset(Sys_Task.SSID,NULL,sizeof(Sys_Task.SSID));
+				memcpy(Sys_Task.SSID,account,strlen(account));
+        		memset(Sys_Task.PASS,NULL,sizeof(Sys_Task.PASS));
+				memcpy(Sys_Task.PASS,passwd,strlen(passwd));
+			}
+			memset(Bluetooth_State.PASS,NULL,sizeof(Bluetooth_State.PASS));
+			memset(Bluetooth_State.SSID,NULL,sizeof(Bluetooth_State.SSID));
+
+			Bluetooth_State.ble_recv_done = FALSE; // 蓝牙数据接收完成标志，出现500错误将其清零
+			Bluetooth_State.ble_conn_sta = FALSE;  // 出现500错误将其清零，回到appdownload页面。
 			Bluetooth_State.wifi_connect_error = TRUE;
+			Bluetooth_State.send_done = TRUE; // 该场景下应关闭599报错
 			Bluetooth_State.wifi_connect_status = ble_idle;
 			break;
 		case ble_wifi_connect_error_598:
 			create_ble_request_objects((char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_mac,(char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_deviceid,"error","598",sw_version,StrConv.s);
 			cjson_content_clip(&StrConv);
 			tty_6.write(StrConv.s,strlen(StrConv.s));
-
 			printf("\r\n%s\r\n",StrConv.s);
 
-            //bl_reset(); // 蓝牙重启，准备下一次发送?
-            
+			// 连接失败则清除WIFI配置数据(注意：仅在注册时才会将配置信息清除)
+			if(appCtl.AppSettingCtr){
+        		memset(Sys_Task.SSID,NULL,sizeof(Sys_Task.SSID));
+				memcpy(Sys_Task.SSID,account,strlen(account));
+        		memset(Sys_Task.PASS,NULL,sizeof(Sys_Task.PASS));
+				memcpy(Sys_Task.PASS,passwd,strlen(passwd));
+			}
+			memset(Bluetooth_State.PASS,NULL,sizeof(Bluetooth_State.PASS));
+			memset(Bluetooth_State.SSID,NULL,sizeof(Bluetooth_State.SSID));
+
+			Bluetooth_State.ble_recv_done = FALSE; // 蓝牙数据接收完成标志，出现598错误将其清零
+			Bluetooth_State.ble_conn_sta = FALSE;  // 出现598错误将其清零，回到appdownload页面。
 			Bluetooth_State.wifi_connect_error = TRUE;
+			Bluetooth_State.send_done = TRUE; // 该场景下应关闭599报错
 			Bluetooth_State.wifi_connect_status = ble_idle;
 			break;
-		case ble_wifi_connect_error_599:
-			
+		case ble_wifi_connect_error_599:  //WIFI模块连接路由器失败
 			memset(Id_Cloud,NULL,sizeof(Id_Cloud));
 			memcpy(Id_Cloud,Sys_Task.wifi_hflpb100.wifi_state.Wifi_mac,12);
 			strncat(Id_Cloud,"_OQAI",5);
 
-			if(!send_done) {
-                
+			if(!Bluetooth_State.send_done) {
 				create_ble_request_objects((char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_mac,Id_Cloud,"error","599",sw_version,StrConv.s);
 				cjson_content_clip(&StrConv);
 				tty_6.write(StrConv.s,strlen(StrConv.s));
-
 				printf("\r\n%s\r\n",StrConv.s);
-                
-                //bl_reset(); // 蓝牙重启，准备下一次发送?
-                
-				send_done = TRUE;
+				
+				// 连接失败则清除WIFI配置数据(注意：仅在注册时才会将配置信息清除)
+				if(appCtl.AppSettingCtr){
+					//ef_set_and_save_env(ssid,account);
+	        		//ef_set_and_save_env(pass,passwd);
+	        		memset(Sys_Task.SSID,NULL,sizeof(Sys_Task.SSID));
+					memcpy(Sys_Task.SSID,account,strlen(account));
+	        		memset(Sys_Task.PASS,NULL,sizeof(Sys_Task.PASS));
+					memcpy(Sys_Task.PASS,passwd,strlen(passwd));
+				}
+				memset(Bluetooth_State.PASS,NULL,sizeof(Bluetooth_State.PASS));
+				memset(Bluetooth_State.SSID,NULL,sizeof(Bluetooth_State.SSID));
+				
+				Bluetooth_State.send_done = TRUE;
+				Bluetooth_State.ble_recv_done = FALSE; // 蓝牙数据接收完成标志，出现599错误将其清零
+				Bluetooth_State.ble_conn_sta = FALSE;  // 出现599错误将其清零，回到appdownload页面。 
 			}
-
+			
             Bluetooth_State.wifi_connect_error = TRUE;
 			Bluetooth_State.wifi_connect_status = ble_idle;
 			break;
+		case ble_wifi_connect_abnormal://蓝牙发送数据错误
+			memset(Id_Cloud,NULL,sizeof(Id_Cloud));
+			memcpy(Id_Cloud,Sys_Task.wifi_hflpb100.wifi_state.Wifi_mac,12);
+			strncat(Id_Cloud,"_OQAI",5);
+			create_ble_request_objects((char *)Sys_Task.wifi_hflpb100.wifi_state.Wifi_mac,Id_Cloud,"error","597",sw_version,StrConv.s);
+			cjson_content_clip(&StrConv);
+			tty_6.write(StrConv.s,strlen(StrConv.s));
+			printf("\r\n%s\r\n",StrConv.s);
+			
+			Bluetooth_State.ble_recv_error = TRUE;
+			Bluetooth_State.ble_conn_sta = FALSE; // 出现接收错误将其清零，回到appdownload页面
+			Bluetooth_State.send_done = TRUE; 	  // 该场景下应关闭599报错
+			Bluetooth_State.wifi_connect_status = ble_idle;
+			break;
+		case ble_connect_abnormal_exit:
+			Bluetooth_State.ble_recv_error = TRUE;
+			Bluetooth_State.ble_conn_sta = FALSE; // 出现接收错误将其清零，回到appdownload页面
+			Bluetooth_State.wifi_connect_status = ble_idle;
+			break;
 		case ble_idle:
+			if(Bluetooth_State.wifi_connect_success){		//配对成功，10s后关闭蓝牙
+				OSTimeDly(10*1000, OS_OPT_TIME_DLY, &err);
+            	BL_RST_OFF;     							// 设置成功则关闭蓝牙
+            	Bluetooth_State.wifi_connect_success = FALSE;
+				printf("Bluetooth Closed!\r\n");
+			}
 			break;
 	    default:  
 	        break; 
@@ -703,7 +751,7 @@ static void AppTaskBLE(void *p_arg)
     static uint32_t Rx_Length_BL = 0;
 	static BUFFER_ BUFFER_F;
 	BUFFER_HANDLE_ input_decode = &BUFFER_F;
-    //Param_t SSID_BUF,PASS_BUF,ACCOUNTID_BUF;
+    uint32_t recv_time = NULL;
     
 	OS_ERR  err; 
     (void)p_arg;		/* 避免编译器告警 */
@@ -771,7 +819,6 @@ static void AppTaskBLE(void *p_arg)
 
     if((env_buf = ef_get_env(ssid)) > NULL)
         memcpy(Sys_Task.SSID,env_buf,strlen(env_buf));
-        
     else 
         memcpy(Sys_Task.SSID,account,strlen(account));
 
@@ -793,19 +840,27 @@ static void AppTaskBLE(void *p_arg)
     BSP_OS_SemPost(&SEM_SYNCH);
 
 	while (TRUE) {
-        //USART6_DATA_RECEIVE:
+        BLUETOOTH_DATA_RECEIVE:
 		iReadLen = tty_6.read(Rx_Buffer_BL + Rx_Length_BL,512);
+		
 		if(iReadLen > 0 && iReadLen < 511){
 			Rx_Length_BL += iReadLen;
-            //printf("%d %d\r\n",Rx_Length_BL,iReadLen);
+			recv_time = HAL_GetTick();//更新时间
+			Bluetooth_State.ble_uart_recv_flag = TRUE;//蓝牙接收标志
+            printf("%d %d\r\n",Rx_Length_BL,iReadLen);
 		}
-         
-		if(Rx_Buffer_BL[0] != 0 && Rx_Length_BL > 0) {
-			printf("%s\r\n",Rx_Buffer_BL); // for testing
 
-            //memset(&Bluetooth_State,NULL,sizeof(Bluetooth_State));
-            
+		if(Bluetooth_State.ble_uart_recv_flag == TRUE && (HAL_GetTick() - recv_time) < 100)
+            goto BLUETOOTH_DATA_RECEIVE;
+		else
+			Bluetooth_State.ble_uart_recv_flag = FALSE;
+      
+		if(Rx_Buffer_BL[0] != 0 && Rx_Length_BL > 0){
+			printf("%s\r\n",Rx_Buffer_BL);
             if((GetSubStrPos((char *)Rx_Buffer_BL,"}")) > 0){ 
+				memset(Bluetooth_State.ACCOUNTID,NULL,sizeof(Bluetooth_State.ACCOUNTID));
+				memset(Bluetooth_State.SSID,NULL,sizeof(Bluetooth_State.SSID));
+				memset(Bluetooth_State.PASS,NULL,sizeof(Bluetooth_State.PASS));
     			if( cJSON_to_str((char *)Rx_Buffer_BL,"ACCOUNTID",(char *)hashkey_buf) == 0 && \
                     cJSON_to_str((char *)Rx_Buffer_BL,"SSID",Bluetooth_State.SSID) == 0 && \
                     cJSON_to_str((char *)Rx_Buffer_BL,"PASS",Bluetooth_State.PASS) == 0){
@@ -813,43 +868,56 @@ static void AppTaskBLE(void *p_arg)
                     if(strlen((char *)hashkey_buf) < 63){
                         memset(Bluetooth_State.ACCOUNTID,NULL,sizeof(Bluetooth_State.ACCOUNTID));
                         memcpy(Bluetooth_State.ACCOUNTID,hashkey_buf,strlen((char *)hashkey_buf));
-                    }else{
+                    }
+					else
+					{
+						Bluetooth_State.wifi_connect_status = ble_wifi_connect_abnormal; // HashKey错误，返回APP页面
                         printf("the hashkey is invalid.\r\n");
                     }
-                      
+
+					memset(input_decode,NULL,sizeof(struct BUFFER_TAG_));
     				input_decode = Base64_Decoder(Bluetooth_State.SSID);
     				memset(&Bluetooth_State.SSID,0,sizeof(Bluetooth_State.SSID));
-                    if(input_decode->size >= 2 && input_decode->size < 64)
+                    if(input_decode->size >= 2 && input_decode->size <= 32) // SSID 2 - 32
     				    memcpy(Bluetooth_State.SSID,input_decode->buffer,input_decode->size);
-                    else{
-                        printf("the ssid is invalid.\r\n");
-                        Bluetooth_State.wifi_connect_status = ble_idle;
+                    else
+					{
+						Bluetooth_State.wifi_connect_status = ble_wifi_connect_abnormal; // SSID错误，返回APP页面
+                        printf("the ssid is invalid[%d].\r\n",input_decode->size);
+                        //Bluetooth_State.wifi_connect_status = ble_idle;
                         Sys_Task.blue_cfg_flag = FALSE;
                     }
 
+					memset(input_decode,NULL,sizeof(struct BUFFER_TAG_));
     				input_decode = Base64_Decoder(Bluetooth_State.PASS);
     				memset(&Bluetooth_State.PASS,0,sizeof(Bluetooth_State.PASS));
-                    if(input_decode->size >= 8 && input_decode->size < 64) {
+                    if(input_decode->size >= 8 && input_decode->size <= 63) { // PASS 8 - 64
     				    memcpy(Bluetooth_State.PASS,input_decode->buffer,input_decode->size);
                         printf("\r\nSSID %s PASS %s\r\n",Bluetooth_State.SSID,Bluetooth_State.PASS);
-
-    				    Bluetooth_State.wifi_connect_status = ble_wifi_connect_request;
+    				    Bluetooth_State.wifi_connect_status = ble_wifi_connect_request; // 蓝牙数据接收完成，数据验证无误
+    				    Bluetooth_State.send_done = FALSE; // 每次启动连接时则开始599报错
                     }                  
-                    else {
-                        printf("the password is invalid.\r\n");
-                        Bluetooth_State.wifi_connect_status = ble_idle;
+                    else 
+					{
+						Bluetooth_State.wifi_connect_status = ble_wifi_connect_abnormal; // PASS错误，返回APP页面
+                        printf("the password is invalid[%d].\r\n",input_decode->size);
+                        //Bluetooth_State.wifi_connect_status = ble_idle;
                         Sys_Task.blue_cfg_flag = FALSE;
                     }
 
                     memset(Rx_Buffer_BL,NULL,sizeof(Rx_Buffer_BL));
                     Rx_Length_BL = 0;
     			}  
-                else {
+                else 
+				{
                     memset(Rx_Buffer_BL,NULL,sizeof(Rx_Buffer_BL));
                     Rx_Length_BL = 0;
+				
+					Bluetooth_State.wifi_connect_status = ble_wifi_connect_abnormal; // 解析错误，返回APP页面
+					Sys_Task.blue_cfg_flag = FALSE;
                 }     
             } 
-			else if((GetSubStrPos((char *)Rx_Buffer_BL,"+EVENT")) >= 0) {
+			else if((GetSubStrPos((char *)Rx_Buffer_BL,"+EVENT")) >= 0){
 				if(strstr((const char *)Rx_Buffer_BL,"=CONN") > NULL){
                     Bluetooth_State.ble_conn_sta = TRUE;
                     memset(Rx_Buffer_BL,NULL,sizeof(Rx_Buffer_BL));
@@ -858,30 +926,29 @@ static void AppTaskBLE(void *p_arg)
                 else if(strstr((const char *)Rx_Buffer_BL,"=DISCONN") > NULL){
                     Rx_Length_BL = 0;
                     memset(Rx_Buffer_BL,NULL,sizeof(Rx_Buffer_BL));
-                    bl_reset(); 
+                    bl_reset();  // 断开后将蓝牙重启
+                    //Bluetooth_State.wifi_connect_status = ble_wifi_connect_abnormal;
                 }
 			}
-            else{
-                printf("continue receiving the remaining data.\r\n");
-                retry++;
-                if(retry >= 20){
-                    retry = 0;
-                    tty_6.clr();
+            else
+			{
+                //printf("continue receiving the remaining data.\r\n");
+                //retry++;
+                //if(retry >= 20){
+                //    retry = 0;
+                    //tty_6.clr();
                     memset(Rx_Buffer_BL,NULL,sizeof(Rx_Buffer_BL));
                     Rx_Length_BL = 0;
-
-                    bl_reset();
-
-                    continue;
-                }
-                
-                //goto USART6_DATA_RECEIVE;
+                    bl_reset(); // 蓝牙重启，断开连接
+                    Bluetooth_State.wifi_connect_status = ble_connect_abnormal_exit; // 蓝牙错误，返回APP页面
+                //    continue;
+             	//}
             }
+			
 	    }
-                
-		tty_6.clr();
+     
+		//tty_6.clr();
 		ble_request_manager((ble_request_t)Bluetooth_State.wifi_connect_status);
-
 	  	OSTimeDly(400, OS_OPT_TIME_DLY, &err);
 	}
 }
@@ -903,7 +970,6 @@ static  void  AppTaskStat ( void * p_arg )
     printf ( "CPU Main Clock %d MHz\r\n", cpu_clk_freq / 1000000 ); 
     
 	while (DEF_TRUE) {
-
         printf("\r\ncalibration task cpu used: %d.%d%%\r\n",AppTaskStartTCB.CPUUsage / 100, AppTaskStartTCB.CPUUsage % 100);
         printf("calibration task stk used & free: %d,%d\r\n",AppTaskStartTCB.StkUsed, AppTaskStartTCB.StkFree);
 
@@ -1091,7 +1157,7 @@ static  void  AppObjCreate (void)
 
 	OSTmrCreate((OS_TMR		*)&tmr2,		
                 (CPU_CHAR	*)"tmr2",		
-                (OS_TICK	 )20*1000u,	    // delay 20s	http响应超时时间		
+                (OS_TICK	 )60*1000u,	    // delay 25s	http响应超时时间		
                 (OS_TICK	 )0,   					
                 (OS_OPT		 )OS_OPT_TMR_ONE_SHOT, 	
                 (OS_TMR_CALLBACK_PTR)tmr2_callback,	
@@ -1100,7 +1166,7 @@ static  void  AppObjCreate (void)
 
 	OSTmrCreate((OS_TMR		*)&tmr3,		
                 (CPU_CHAR	*)"tmr3",		
-                (OS_TICK	 )35*1000u,	    // delay 35s	post时间间隔		
+                (OS_TICK	 )30*1000u,	    // delay 30s	post时间间隔		
                 (OS_TICK	 )0,   					
                 (OS_OPT		 )OS_OPT_TMR_ONE_SHOT, 	
                 (OS_TMR_CALLBACK_PTR)tmr3_callback,	
@@ -1109,7 +1175,7 @@ static  void  AppObjCreate (void)
 
 	OSTmrCreate((OS_TMR		*)&tmr4,		
                 (CPU_CHAR	*)"tmr4",		
-                (OS_TICK	 )5*1000u,	    // delay 5s get para时间间隔		
+                (OS_TICK	 )4*1000u,	    // delay 5s get para时间间隔		
                 (OS_TICK	 )0,   					
                 (OS_OPT		 )OS_OPT_TMR_ONE_SHOT, 	
                 (OS_TMR_CALLBACK_PTR)tmr4_callback,	
@@ -1118,8 +1184,8 @@ static  void  AppObjCreate (void)
     
 	OSTmrCreate((OS_TMR		*)&tmr5,		
                 (CPU_CHAR	*)"tmr5",		
-                (OS_TICK	 )0,	        // delay 30s重启时间间隔
-                (OS_TICK	 )30*1000u, 				
+                (OS_TICK	 )0,	        // delay 40s重启时间间隔
+                (OS_TICK	 )70*1000u, 				
                 (OS_OPT		 )OS_OPT_TMR_PERIODIC,
                 (OS_TMR_CALLBACK_PTR)tmr5_callback,	
                 (void	    *)0,			
@@ -1146,6 +1212,19 @@ static  void  AppObjCreate (void)
                 (OS_ERR	    *)&err);
 	
 	OSTmrStart(&tmr8,&err); 				 // start tmr8
+
+	#if 0
+	OSTmrCreate((OS_TMR		*)&tmr9,		
+                (CPU_CHAR	*)"tmr9",		
+                (OS_TICK	 )1000u,	    // 首次延时1000ms
+                (OS_TICK	 )1000u,   		// 周期延时1000ms			
+                (OS_OPT		 )OS_OPT_TMR_PERIODIC,
+                (OS_TMR_CALLBACK_PTR)voc_tmr_callback,
+                (void	    *)0,			
+                (OS_ERR	    *)&err);
+	
+	OSTmrStart(&tmr9,&err); 				 // start tmr8
+	#endif
 }
 
 /*
@@ -1253,6 +1332,7 @@ void tmr4_callback(void *p_tmr,void *p_arg)
 }
 
 extern AzureState_MODE  AzureState;
+
 
 void tmr5_callback(void *p_tmr,void *p_arg)
 {

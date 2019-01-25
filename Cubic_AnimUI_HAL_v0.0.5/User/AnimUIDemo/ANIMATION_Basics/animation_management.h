@@ -45,6 +45,10 @@ typedef struct _NORMAL_WORK_MODE{
 	U8  favor_mode_out;
     U8  reset_mode_en;
     U8  CO2_recali_en;
+	U8  holidayModeEn;
+	U8  holidayModeQuitFlag;
+	U8  alertModeEN;
+	U8  alertModeQuitFlag;
 }WORK_MODE_T;
 
 extern WORK_MODE_T run_mode;

@@ -35,7 +35,6 @@ void    Rheostat_Init(void);
 int     GetMedianNum(int * bArray, int iFilterLen);
 void    GetVocValue(int * pData,int FitterValue);
 
-
 #endif /* __BSP_ADC_H */
 
 
